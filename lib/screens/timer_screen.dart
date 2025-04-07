@@ -164,13 +164,17 @@ class _TimerScreenState extends State<TimerScreen> {
   Widget _buildTimerGrid() {
     return FocusTraversalGroup(
       policy: WidgetOrderTraversalPolicy(), // Enables arrow key navigation
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 16,
-        runSpacing: 16,
-        children: List.generate(
-          durations.length,
-          (i) => _buildTimerButton(durations[i], i, _focusNodes[i]),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: List.generate(
+              durations.length,
+              (i) => _buildTimerButton(durations[i], i, _focusNodes[i]),
+            ),
+          ),
         ),
       ),
     );
@@ -193,24 +197,14 @@ class _TimerScreenState extends State<TimerScreen> {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         final key = event.logicalKey;
         int? newIndex;
-        // Calculate new index based on arrow key press.
-        if (key == LogicalKeyboardKey.arrowRight) {
-          // If not on the right edge
-          if ((index + 1) % _columns != 0 && index + 1 < durations.length) {
-            newIndex = index + 1;
-          }
-        } else if (key == LogicalKeyboardKey.arrowLeft) {
-          if (index % _columns != 0) {
-            newIndex = index - 1;
-          }
-        } else if (key == LogicalKeyboardKey.arrowDown) {
-          if (index + _columns < durations.length) {
-            newIndex = index + _columns;
-          }
-        } else if (key == LogicalKeyboardKey.arrowUp) {
-          if (index - _columns >= 0) {
-            newIndex = index - _columns;
-          }
+
+        // Simplified: Just move linearly across the list with arrow keys
+        if (key == LogicalKeyboardKey.arrowRight ||
+            key == LogicalKeyboardKey.arrowDown) {
+          if (index + 1 < durations.length) newIndex = index + 1;
+        } else if (key == LogicalKeyboardKey.arrowLeft ||
+            key == LogicalKeyboardKey.arrowUp) {
+          if (index - 1 >= 0) newIndex = index - 1;
         } else if (key == LogicalKeyboardKey.enter ||
             key == LogicalKeyboardKey.select) {
           _start(duration);
