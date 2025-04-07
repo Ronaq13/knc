@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class CircuitScreen extends StatefulWidget {
   const CircuitScreen({Key? key}) : super(key: key);
@@ -24,7 +25,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   Duration totalPhaseDuration = Duration.zero;
   Stopwatch stopwatch = Stopwatch();
   late final Ticker _ticker;
-
+  final AudioPlayer _audioPlayer = AudioPlayer();
   final Duration countdownTime = Duration(seconds: 3);
 
   final List<Duration> intervalOptions = [
@@ -53,6 +54,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   ];
 
   final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20, 25];
+  int? _lastBeepSecond;
 
   @override
   void initState() {
@@ -68,22 +70,37 @@ class _CircuitScreenState extends State<CircuitScreen> {
       stopwatch
         ..stop()
         ..reset();
+      _lastBeepSecond = null;
       if (isCountdown) {
         isCountdown = false;
         _startInterval();
       } else if (isBreak) {
+        _startInterval();
+      } else {
         if (currentRound < (rounds ?? 0)) {
-          _startCountdown();
+          if (currentRound == (rounds ?? 0)) {
+            _completeWorkout();
+          } else {
+            _startBreak();
+          }
         } else {
           _completeWorkout();
         }
-      } else {
-        _startBreak();
       }
     } else {
+      _maybePlayBeep(timeLeft);
       setState(() {
         remaining = timeLeft;
       });
+    }
+  }
+
+  void _maybePlayBeep(Duration timeLeft) async {
+    int secondsLeft = timeLeft.inSeconds;
+    if ((secondsLeft <= 3 && secondsLeft > 0) &&
+        _lastBeepSecond != secondsLeft) {
+      _lastBeepSecond = secondsLeft;
+      await _audioPlayer.play(AssetSource('assets/beep.mp3'));
     }
   }
 
@@ -93,6 +110,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       isCountdown = true;
       totalPhaseDuration = countdownTime;
       remaining = countdownTime;
+      _lastBeepSecond = null;
       stopwatch
         ..reset()
         ..start();
@@ -106,6 +124,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       totalPhaseDuration = interval!;
       remaining = interval!;
       currentRound += 1;
+      _lastBeepSecond = null;
       stopwatch
         ..reset()
         ..start();
@@ -113,11 +132,20 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startBreak() {
+    if (currentRound >= (rounds ?? 0)) {
+      _completeWorkout();
+      return;
+    }
+    if (currentRound == 0) {
+      _startInterval();
+      return;
+    }
     setState(() {
       isBreak = true;
       isCountdown = false;
       totalPhaseDuration = breakDuration!;
       remaining = breakDuration!;
+      _lastBeepSecond = null;
       stopwatch
         ..reset()
         ..start();
@@ -130,7 +158,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       isCompleted = false;
       currentRound = 0;
     });
-    _startCountdown();
+    _startInterval();
   }
 
   void _completeWorkout() {
@@ -218,8 +246,6 @@ class _CircuitScreenState extends State<CircuitScreen> {
     String title;
     if (isCompleted) {
       title = "Workout complete!";
-    } else if (isCountdown) {
-      title = "Starting soon...";
     } else if (isBreak) {
       title = "Round $currentRound completed";
     } else {
@@ -276,6 +302,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   void dispose() {
     _ticker.dispose();
     stopwatch.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
