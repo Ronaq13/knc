@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -67,6 +66,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
 
     final timeLeft = totalPhaseDuration - stopwatch.elapsed;
     if (timeLeft <= Duration.zero) {
+      _audioPlayer.stop();
       stopwatch
         ..stop()
         ..reset();
@@ -95,12 +95,16 @@ class _CircuitScreenState extends State<CircuitScreen> {
     }
   }
 
-  void _maybePlayBeep(Duration timeLeft) async {
+  void _maybePlayBeep(Duration timeLeft) {
+    // Only play during intervals (not breaks)
+    if (isBreak) return;
+
     int secondsLeft = timeLeft.inSeconds;
-    if ((secondsLeft <= 3 && secondsLeft > 0) &&
-        _lastBeepSecond != secondsLeft) {
+    if (secondsLeft == 4 && _lastBeepSecond != secondsLeft) {
       _lastBeepSecond = secondsLeft;
-      await _audioPlayer.play(AssetSource('assets/beep.mp3'));
+      _playSound('end.mp3');
+    } else if (secondsLeft > 4 || secondsLeft <= 0) {
+      _lastBeepSecond = null; // Reset when outside the 4-second window
     }
   }
 
@@ -117,7 +121,18 @@ class _CircuitScreenState extends State<CircuitScreen> {
     });
   }
 
+  // Add this method to play sounds
+  Future<void> _playSound(String soundFile) async {
+    try {
+      await _audioPlayer.stop(); // Stop any current playback
+      await _audioPlayer.play(AssetSource('sounds/$soundFile'));
+    } catch (e) {
+      debugPrint('Error playing sound $soundFile: $e');
+    }
+  }
+
   void _startInterval() {
+    _playSound('start.mp3');
     setState(() {
       isBreak = false;
       isCountdown = false;
@@ -132,6 +147,9 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startBreak() {
+    // Stop any currently playing sounds
+    _audioPlayer.stop();
+
     if (currentRound >= (rounds ?? 0)) {
       _completeWorkout();
       return;
@@ -140,6 +158,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       _startInterval();
       return;
     }
+
     setState(() {
       isBreak = true;
       isCountdown = false;
@@ -162,6 +181,8 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _completeWorkout() {
+    _audioPlayer.stop(); // Stop any playing sounds
+
     setState(() {
       isCompleted = true;
       isRunning = false;
@@ -171,6 +192,8 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _resetState() {
+    _audioPlayer.stop(); // Stop any playing sounds
+
     setState(() {
       isRunning = false;
       isPaused = false;
