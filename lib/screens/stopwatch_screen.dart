@@ -100,22 +100,32 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
       child: Builder(
         builder: (context) {
           final isFocused = Focus.of(context).hasFocus;
+          final screenHeight = MediaQuery.of(context).size.height;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final buttonHeight = screenHeight * 0.10;
+          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final fontSize = buttonHeight * 0.3; // 30% of height
+
           return GestureDetector(
             onTap: onPressed,
             child: Container(
+              height: buttonHeight,
+              width: buttonWidth,
               padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               margin: EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: isFocused ? Colors.blue : Colors.grey[800],
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(52),
                 border: Border.all(
                   color: isFocused ? Colors.white : Colors.transparent,
                   width: 2,
                 ),
               ),
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 20, color: Colors.white),
+              child: Center(
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: fontSize, color: Colors.white),
+                ),
               ),
             ),
           );
@@ -126,6 +136,9 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final timerFontSize = screenHeight * 0.25; // 25% of height
+
     return FocusTraversalGroup(
       policy: ReadingOrderTraversalPolicy(),
       child: Column(
@@ -133,7 +146,10 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
         children: [
           Text(
             _format(_elapsed),
-            style: TextStyle(fontSize: 72, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: timerFontSize,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           SizedBox(height: 40),
           Row(

@@ -114,15 +114,6 @@ class _TimerScreenState extends State<TimerScreen> {
     }
   }
 
-  // (If you want a short beep at 3 seconds instead of the end sound, you could use this.)
-  Future<void> _playBeep() async {
-    try {
-      await _player.play(AssetSource('sounds/beep.mp3'));
-    } catch (e) {
-      print('Error playing beep: $e');
-    }
-  }
-
   String _format(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     final minutes = two(d.inMinutes.remainder(60));
@@ -147,7 +138,7 @@ class _TimerScreenState extends State<TimerScreen> {
       // Using ReadingOrderTraversalPolicy so that the children are traversed in creation order.
       policy: ReadingOrderTraversalPolicy(),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.white,
         body: Center(
           child:
               _showGrid
@@ -181,10 +172,24 @@ class _TimerScreenState extends State<TimerScreen> {
   }
 
   // Displays the countdown timer in the center.
+  // Displays the countdown timer in the center with dynamic sizing
   Widget _buildTimerDisplay() {
-    return Text(
-      _format(_remaining),
-      style: const TextStyle(fontSize: 72, color: Colors.white),
+    final screenHeight = MediaQuery.of(context).size.height;
+    final timerFontSize = screenHeight * 0.25; // 25% of height
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Text(
+          _format(_remaining),
+          style: TextStyle(
+            fontSize: timerFontSize,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            height: 1.0, // Ensures text takes exactly the calculated height
+          ),
+          textAlign: TextAlign.center,
+        );
+      },
     );
   }
 
@@ -199,11 +204,9 @@ class _TimerScreenState extends State<TimerScreen> {
         int? newIndex;
 
         // Simplified: Just move linearly across the list with arrow keys
-        if (key == LogicalKeyboardKey.arrowRight ||
-            key == LogicalKeyboardKey.arrowDown) {
+        if (key == LogicalKeyboardKey.arrowRight) {
           if (index + 1 < durations.length) newIndex = index + 1;
-        } else if (key == LogicalKeyboardKey.arrowLeft ||
-            key == LogicalKeyboardKey.arrowUp) {
+        } else if (key == LogicalKeyboardKey.arrowLeft) {
           if (index - 1 >= 0) newIndex = index - 1;
         } else if (key == LogicalKeyboardKey.enter ||
             key == LogicalKeyboardKey.select) {
@@ -221,21 +224,31 @@ class _TimerScreenState extends State<TimerScreen> {
       child: Builder(
         builder: (context) {
           final isFocused = Focus.of(context).hasFocus;
+          final screenHeight = MediaQuery.of(context).size.height;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final buttonHeight = screenHeight * 0.10;
+          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final fontSize = buttonHeight * 0.3; // 30% of height
+
           return GestureDetector(
             onTap: () => _start(duration),
             child: Container(
+              height: buttonHeight,
+              width: buttonWidth,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
                 color: isFocused ? Colors.blue : Colors.grey[800],
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(52),
                 border: Border.all(
                   color: isFocused ? Colors.white : Colors.transparent,
                   width: 2,
                 ),
               ),
-              child: Text(
-                _format(duration),
-                style: const TextStyle(fontSize: 18, color: Colors.white),
+              child: Center(
+                child: Text(
+                  _format(duration),
+                  style: TextStyle(fontSize: fontSize, color: Colors.white),
+                ),
               ),
             ),
           );

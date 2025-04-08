@@ -302,9 +302,17 @@ class _CircuitScreenState extends State<CircuitScreen> {
       child: Builder(
         builder: (context) {
           final isFocused = Focus.of(context).hasFocus;
+          final screenHeight = MediaQuery.of(context).size.height;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final buttonHeight = screenHeight * 0.10;
+          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final fontSize = buttonHeight * 0.3; // 30% of height
+
           return GestureDetector(
             onTap: () => onTap(value),
             child: Container(
+              height: buttonHeight,
+              width: buttonWidth,
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
               margin: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -312,15 +320,17 @@ class _CircuitScreenState extends State<CircuitScreen> {
                     selected == value
                         ? Colors.amber
                         : (isFocused ? Colors.blue : Colors.grey[800]),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(52),
                 border: Border.all(
                   color: isFocused ? Colors.white : Colors.transparent,
                   width: 2,
                 ),
               ),
-              child: Text(
-                value is Duration ? _format(value) : value.toString(),
-                style: const TextStyle(fontSize: 20, color: Colors.white),
+              child: Center(
+                child: Text(
+                  value is Duration ? _format(value) : value.toString(),
+                  style: TextStyle(fontSize: fontSize, color: Colors.white),
+                ),
               ),
             ),
           );
@@ -361,22 +371,32 @@ class _CircuitScreenState extends State<CircuitScreen> {
       child: Builder(
         builder: (context) {
           final isFocused = Focus.of(context).hasFocus;
+          final screenHeight = MediaQuery.of(context).size.height;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final buttonHeight = screenHeight * 0.10;
+          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final fontSize = buttonHeight * 0.3; // 30% of height
+
           return GestureDetector(
             onTap: onPressed,
             child: Container(
+              height: buttonHeight,
+              width: buttonWidth,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               margin: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: isFocused ? Colors.blue : Colors.grey[800],
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(52),
                 border: Border.all(
                   color: isFocused ? Colors.white : Colors.transparent,
                   width: 2,
                 ),
               ),
-              child: Text(
-                label,
-                style: const TextStyle(fontSize: 20, color: Colors.white),
+              child: Center(
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: fontSize, color: Colors.white),
+                ),
               ),
             ),
           );
@@ -392,10 +412,16 @@ class _CircuitScreenState extends State<CircuitScreen> {
     void Function(T) onTap,
     int rowIndex,
   ) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final labelHeight = screenHeight * 0.04;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 24, color: Colors.white)),
+        Text(
+          label,
+          style: TextStyle(fontSize: labelHeight, color: Colors.black),
+        ),
         Wrap(
           children: List.generate(
             options.length,
@@ -442,17 +468,24 @@ class _CircuitScreenState extends State<CircuitScreen> {
     } else if (isBreak) {
       title = "Round $currentRound completed";
     } else {
-      title = "Round $currentRound of $rounds";
+      title = "Round $currentRound / $rounds";
     }
+
+    final screenHeight = MediaQuery.of(context).size.height;
+    final timerFontSize = screenHeight * 0.25; // 25% of height
+    final titleFontSize = screenHeight * 0.05;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, style: const TextStyle(fontSize: 28, color: Colors.white)),
+        Text(
+          title,
+          style: TextStyle(fontSize: titleFontSize, color: Colors.black),
+        ),
         const SizedBox(height: 16),
         Text(
           _format(remaining),
-          style: const TextStyle(fontSize: 64, color: Colors.white),
+          style: TextStyle(fontSize: timerFontSize, color: Colors.black),
         ),
         const SizedBox(height: 32),
         if (!isCompleted) _buildControls(),
@@ -514,7 +547,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: Center(
         child: isRunning || isCompleted ? _buildTimerUI() : _buildConfigUI(),
       ),
