@@ -33,9 +33,6 @@ class _TimerScreenState extends State<TimerScreen> {
   // We store one FocusNode per timer button.
   late List<FocusNode> _focusNodes;
 
-  // Grid dimensions: we show 3 columns.
-  final int _columns = 3;
-
   @override
   void initState() {
     super.initState();

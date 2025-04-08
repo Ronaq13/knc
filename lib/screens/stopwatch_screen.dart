@@ -21,6 +21,10 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
     super.initState();
     _elapsed = Duration.zero;
     _ticker = Ticker(_onTick)..start();
+    // Set initial focus to the start button
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _startPauseFocusNode.requestFocus();
+    });
   }
 
   void _onTick(Duration elapsed) {
@@ -84,7 +88,20 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
         final key = event.logicalKey;
 
         if (key == LogicalKeyboardKey.arrowRight) {
-          FocusScope.of(node.context!).nextFocus();
+          // If this is the reset button (last button), move to next screen
+          if (focusNode == _resetFocusNode) {
+            // Find the next screen's focus node through the parent
+            final parentContext = node.context!.findAncestorStateOfType<_KncHomeState>();
+            if (parentContext != null) {
+              parentContext.setState(() {
+                parentContext._selectedIndex = (parentContext._selectedIndex + 1) % 3;
+                FocusScope.of(node.context!).requestFocus(parentContext._focusNodes[parentContext._selectedIndex]);
+              });
+              return KeyEventResult.handled;
+            }
+          } else {
+            FocusScope.of(node.context!).nextFocus();
+          }
           return KeyEventResult.handled;
         } else if (key == LogicalKeyboardKey.arrowLeft) {
           FocusScope.of(node.context!).previousFocus();
