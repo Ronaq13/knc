@@ -60,17 +60,30 @@ class _KncHomeState extends State<KncHome> {
   late final List<Widget> _pages;
   late final GlobalKey<StopwatchScreenState> _stopwatchKey;
   late final GlobalKey<TimerScreenState> _timerKey;
+  late final GlobalKey<CircuitScreenState> _circuitKey;
   
   @override
   void initState() {
     super.initState();
     
+    // Initialize focus nodes with key event handling
+    _focusNodes.clear(); // Clear the auto-generated list
+    
+    // Create custom focus nodes with key event handling
+    for (int i = 0; i < 3; i++) {
+      final int index = i; // Capture the index for the closure
+      final focusNode = FocusNode();
+      
+      _focusNodes.add(focusNode);
+    }
+    
     // Initialize pages
     _stopwatchKey = GlobalKey<StopwatchScreenState>();
     _timerKey = GlobalKey<TimerScreenState>();
+    _circuitKey = GlobalKey<CircuitScreenState>();
     final stopwatchScreen = StopwatchScreen(key: _stopwatchKey);
     final timerScreen = TimerScreen(key: _timerKey);
-    final circuitScreen = CircuitScreen();
+    final circuitScreen = CircuitScreen(key: _circuitKey);
     _pages = [
       stopwatchScreen,
       timerScreen,
@@ -125,10 +138,14 @@ class _KncHomeState extends State<KncHome> {
           }
         } else if (_selectedIndex == 2) {
           // If we're on the circuit tab, trigger its autofocus
-          // Use the extension to access the circuit screen state
-          final circuitState = context.circuitScreenState;
+          final circuitState = _circuitKey.currentState;
           if (circuitState != null) {
-            circuitState.autofocusFirstButton();
+            // Use the more specific method if circuit is running
+            if (circuitState.isCircuitRunning && !circuitState.isCircuitCompleted) {
+              circuitState.focusPauseButton();
+            } else {
+              circuitState.autofocusFirstButton();
+            }
           } else {
             // Fallback to body focus if we can't access the circuit state
             FocusScope.of(context).requestFocus(_bodyFocusNode);
@@ -204,6 +221,16 @@ class _KncHomeState extends State<KncHome> {
               BottomNavigationBarItem(
                 icon: Focus(
                   focusNode: _focusNodes[0],
+                  onKey: (FocusNode node, RawKeyEvent event) {
+                    if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      final stopwatchState = _stopwatchKey.currentState;
+                      if (stopwatchState != null) {
+                        stopwatchState.autofocusStartButton();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   child: Builder(
                     builder: (BuildContext context) {
                       final bool hasFocus = Focus.of(context).hasFocus;
@@ -227,6 +254,16 @@ class _KncHomeState extends State<KncHome> {
               BottomNavigationBarItem(
                 icon: Focus(
                   focusNode: _focusNodes[1],
+                  onKey: (FocusNode node, RawKeyEvent event) {
+                    if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      final timerState = _timerKey.currentState;
+                      if (timerState != null) {
+                        timerState.autofocusFirstButton();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   child: Builder(
                     builder: (BuildContext context) {
                       final bool hasFocus = Focus.of(context).hasFocus;
@@ -250,6 +287,20 @@ class _KncHomeState extends State<KncHome> {
               BottomNavigationBarItem(
                 icon: Focus(
                   focusNode: _focusNodes[2],
+                  onKey: (FocusNode node, RawKeyEvent event) {
+                    if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      final circuitState = _circuitKey.currentState;
+                      if (circuitState != null) {
+                        if (circuitState.isCircuitRunning && !circuitState.isCircuitCompleted) {
+                          circuitState.focusPauseButton();
+                        } else {
+                          circuitState.autofocusFirstButton();
+                        }
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
                   child: Builder(
                     builder: (BuildContext context) {
                       final bool hasFocus = Focus.of(context).hasFocus;

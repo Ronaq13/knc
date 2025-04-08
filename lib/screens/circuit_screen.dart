@@ -4,15 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class CircuitScreen extends StatefulWidget {
-  final Function? onAutofocusRequested;
-
-  const CircuitScreen({Key? key, this.onAutofocusRequested}) : super(key: key);
+  const CircuitScreen({Key? key}) : super(key: key);
 
   @override
-  State<CircuitScreen> createState() => _CircuitScreenState();
+  State<CircuitScreen> createState() => CircuitScreenState();
 }
 
-class _CircuitScreenState extends State<CircuitScreen> {
+class CircuitScreenState extends State<CircuitScreen> {
   Duration? interval;
   Duration? breakDuration;
   int? rounds;
@@ -29,6 +27,10 @@ class _CircuitScreenState extends State<CircuitScreen> {
   late final Ticker _ticker;
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Duration countdownTime = Duration(seconds: 3);
+
+  // Public getters for external access
+  bool get isCircuitRunning => isRunning;
+  bool get isCircuitCompleted => isCompleted;
 
   // Focus nodes for control buttons
   final FocusNode _pauseFocusNode = FocusNode();
@@ -76,11 +78,6 @@ class _CircuitScreenState extends State<CircuitScreen> {
       List.generate(breakOptions.length, (_) => FocusNode()),
       List.generate(roundOptions.length, (_) => FocusNode()),
     ];
-    
-    // Register the autofocus method with the parent
-    if (widget.onAutofocusRequested != null) {
-      widget.onAutofocusRequested!();
-    }
     
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _focusNodes[0][0].requestFocus();
@@ -168,6 +165,13 @@ class _CircuitScreenState extends State<CircuitScreen> {
         ..reset()
         ..start();
     });
+    
+    // Ensure the pause button remains focused
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!_pauseFocusNode.hasFocus) {
+        _pauseFocusNode.requestFocus();
+      }
+    });
   }
 
   void _startBreak() {
@@ -192,6 +196,13 @@ class _CircuitScreenState extends State<CircuitScreen> {
         ..reset()
         ..start();
     });
+    
+    // Ensure the pause button remains focused
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!_pauseFocusNode.hasFocus) {
+        _pauseFocusNode.requestFocus();
+      }
+    });
   }
 
   void _startCircuit() {
@@ -201,11 +212,24 @@ class _CircuitScreenState extends State<CircuitScreen> {
       currentRound = 0;
       isPaused = false;
     });
-    _startInterval();
-
-    // Set focus to pause button when circuit starts
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      _pauseFocusNode.requestFocus();
+    
+    // Start the interval after a short delay to ensure the UI is updated
+    Future.delayed(Duration(milliseconds: 50), () {
+      _startInterval();
+      
+      // Set focus to pause button when circuit starts
+      // Only if no button is currently focused and we're not transitioning from a button
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        // Check if the focus is currently on the bottom navigation bar
+        // If it is, don't request focus on the Pause button
+        final currentFocus = FocusManager.instance.primaryFocus;
+        final isBottomNavFocused = currentFocus != null && 
+            (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
+        
+        if (!_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
+          _pauseFocusNode.requestFocus();
+        }
+      });
     });
   }
 
@@ -225,6 +249,13 @@ class _CircuitScreenState extends State<CircuitScreen> {
           stopwatch.start();
           _pausedRemaining = null;
         }
+      }
+    });
+    
+    // Ensure the pause/resume button remains focused
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!_pauseFocusNode.hasFocus) {
+        _pauseFocusNode.requestFocus();
       }
     });
   }
@@ -279,14 +310,28 @@ class _CircuitScreenState extends State<CircuitScreen> {
           int newRow = rowIndex;
           int newCol = colIndex;
 
-          if (event.logicalKey == LogicalKeyboardKey.arrowRight)
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            // If we're on the rightmost button, prevent navigation
+            if (colIndex >= _focusNodes[rowIndex].length - 1) {
+              return KeyEventResult.handled;
+            }
             newCol++;
-          else if (event.logicalKey == LogicalKeyboardKey.arrowLeft)
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            // If we're on the leftmost button, prevent navigation
+            if (colIndex <= 0) {
+              return KeyEventResult.handled;
+            }
             newCol--;
-          else if (event.logicalKey == LogicalKeyboardKey.arrowDown)
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            // If we're on the last available row, let the event propagate to the parent
+            // to focus on the bottom navigation bar
+            if (rowIndex >= _getLastAvailableRowIndex()) {
+              return KeyEventResult.ignored;
+            }
             newRow++;
-          else if (event.logicalKey == LogicalKeyboardKey.arrowUp)
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
             newRow--;
+          }
 
           if (newRow >= 0 && newRow < _focusNodes.length) {
             if (newCol >= 0 && newCol < _focusNodes[newRow].length) {
@@ -347,10 +392,23 @@ class _CircuitScreenState extends State<CircuitScreen> {
     );
   }
 
+  // Helper method to determine the last available row index based on selected values
+  int _getLastAvailableRowIndex() {
+    if (interval == null) {
+      return 0; // Only Interval row is available
+    } else if (breakDuration == null) {
+      return 1; // Interval and Break rows are available
+    } else {
+      return 2; // All rows are available
+    }
+  }
+
   Widget buildTVButton({
     required String label,
     required VoidCallback onPressed,
     required FocusNode focusNode,
+    bool isLeftmost = false,
+    bool isRightmost = false,
   }) {
     return Focus(
       focusNode: focusNode,
@@ -359,11 +417,33 @@ class _CircuitScreenState extends State<CircuitScreen> {
 
         // Handle left-right navigation
         if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          FocusScope.of(node.context!).nextFocus();
-          return KeyEventResult.handled;
+          // If we're on the rightmost button, prevent navigation
+          if (isRightmost) {
+            return KeyEventResult.handled;
+          }
+          // Directly request focus on the next button
+          if (label == 'Pause' || label == 'Resume') {
+            _resetFocusNode.requestFocus();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
         } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          FocusScope.of(node.context!).previousFocus();
-          return KeyEventResult.handled;
+          // If we're on the leftmost button, prevent navigation
+          if (isLeftmost) {
+            return KeyEventResult.handled;
+          }
+          // Directly request focus on the previous button
+          if (label == 'Reset') {
+            _pauseFocusNode.requestFocus();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        } 
+        // Handle down arrow key to move focus to bottom navigation
+        else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          // Let the event propagate to the parent to focus on the bottom navigation bar
+          // This will prevent the focus from returning to the Pause button
+          return KeyEventResult.ignored;
         }
         // Handle Enter/OK key press
         else if (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -458,11 +538,13 @@ class _CircuitScreenState extends State<CircuitScreen> {
             label: isPaused ? 'Resume' : 'Pause',
             onPressed: _togglePause,
             focusNode: _pauseFocusNode,
+            isLeftmost: true,
           ),
           buildTVButton(
             label: 'Reset',
             onPressed: _resetState,
             focusNode: _resetFocusNode,
+            isRightmost: true,
           ),
         ],
       ),
@@ -482,6 +564,20 @@ class _CircuitScreenState extends State<CircuitScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25; // 25% of height
     final titleFontSize = screenHeight * 0.05;
+
+    // Only request focus if no button is currently focused and we're not transitioning from a button
+    // This prevents the focus from returning to the Pause button when the down arrow key is pressed
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      // Check if the focus is currently on the bottom navigation bar
+      // If it is, don't request focus on the Pause button
+      final currentFocus = FocusManager.instance.primaryFocus;
+      final isBottomNavFocused = currentFocus != null && 
+          (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
+      
+      if (!isCompleted && !_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
+        _pauseFocusNode.requestFocus();
+      }
+    });
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -557,20 +653,85 @@ class _CircuitScreenState extends State<CircuitScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
-        child: isRunning || isCompleted ? _buildTimerUI() : _buildConfigUI(),
+        child: isRunning || isCompleted 
+            ? Focus(
+                // Use a non-traversable focus node to prevent body focus
+                focusNode: FocusNode(skipTraversal: true, canRequestFocus: false),
+                onKey: (FocusNode node, RawKeyEvent event) {
+                  // Handle up arrow key to focus on the Pause button
+                  if (event is RawKeyDownEvent && 
+                      event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    // Only focus on the Pause button if the circuit is running
+                    if (isRunning && !isCompleted) {
+                      // Use a slight delay to ensure it works
+                      Future.delayed(Duration(milliseconds: 10), () {
+                        _pauseFocusNode.requestFocus();
+                      });
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: _buildTimerUI(),
+              )
+            : _buildConfigUI(),
       ),
     );
   }
 
-  // Method to autofocus the first interval button
+  // Method to directly focus the pause button
+  void focusPauseButton() {
+    if (!isRunning || isCompleted) return;
+    
+    // Request focus multiple times with increasing delays to ensure it gets applied
+    _pauseFocusNode.requestFocus();
+    
+    // Try again with a slight delay
+    Future.delayed(Duration(milliseconds: 10), () {
+      if (!_pauseFocusNode.hasFocus) {
+        _pauseFocusNode.requestFocus();
+      }
+    });
+    
+    // And once more with a longer delay
+    Future.delayed(Duration(milliseconds: 50), () {
+      if (!_pauseFocusNode.hasFocus) {
+        _pauseFocusNode.requestFocus();
+      }
+    });
+  }
+
+  // Method to autofocus the first interval button or Pause button
   void autofocusFirstButton() {
-    if (!isRunning && !isCompleted && _focusNodes.isNotEmpty && _focusNodes[0].isNotEmpty) {
-      _focusNodes[0][0].requestFocus();
+    // If circuit is running, directly focus on the Pause button
+    if (isRunning && !isCompleted) {
+      // Use a slight delay to ensure UI is ready
+      Future.delayed(Duration(milliseconds: 10), () {
+        _pauseFocusNode.requestFocus();
+      });
+      return;
+    }
+    
+    // Otherwise, if configuring, focus on appropriate config button
+    if (!isRunning && !isCompleted && _focusNodes.isNotEmpty) {
+      // Find the first available row
+      int firstAvailableRow = 0;
+      if (interval != null) {
+        firstAvailableRow = 1;
+        if (breakDuration != null) {
+          firstAvailableRow = 2;
+        }
+      }
+      
+      // Focus on the first button in the first available row
+      if (_focusNodes[firstAvailableRow].isNotEmpty) {
+        _focusNodes[firstAvailableRow][0].requestFocus();
+      }
     }
   }
 }
 
 // Extension to access the CircuitScreen state
 extension CircuitScreenExtension on BuildContext {
-  _CircuitScreenState? get circuitScreenState => findAncestorStateOfType<_CircuitScreenState>();
+  CircuitScreenState? get circuitScreenState => findAncestorStateOfType<CircuitScreenState>();
 }
