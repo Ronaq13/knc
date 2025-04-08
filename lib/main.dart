@@ -56,11 +56,27 @@ class _KncHomeState extends State<KncHome> {
   final _focusNodes = List.generate(3, (_) => FocusNode());
   final _bodyFocusNode = FocusNode();
 
-  final _pages = [StopwatchScreen(), TimerScreen(), CircuitScreen()];
-
+  // Create the pages with keys
+  late final List<Widget> _pages;
+  late final GlobalKey<StopwatchScreenState> _stopwatchKey;
+  late final GlobalKey<TimerScreenState> _timerKey;
+  
   @override
   void initState() {
     super.initState();
+    
+    // Initialize pages
+    _stopwatchKey = GlobalKey<StopwatchScreenState>();
+    _timerKey = GlobalKey<TimerScreenState>();
+    final stopwatchScreen = StopwatchScreen(key: _stopwatchKey);
+    final timerScreen = TimerScreen(key: _timerKey);
+    final circuitScreen = CircuitScreen();
+    _pages = [
+      stopwatchScreen,
+      timerScreen,
+      circuitScreen,
+    ];
+    
     // Set initial focus
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNodes[_selectedIndex]);
@@ -89,7 +105,38 @@ class _KncHomeState extends State<KncHome> {
           FocusScope.of(context).requestFocus(_focusNodes[_selectedIndex]);
         });
       } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        FocusScope.of(context).requestFocus(_bodyFocusNode);
+        // If we're on the stopwatch tab, trigger its autofocus
+        if (_selectedIndex == 0) {
+          final stopwatchState = _stopwatchKey.currentState;
+          if (stopwatchState != null) {
+            stopwatchState.autofocusStartButton();
+          } else {
+            // Fallback to body focus if we can't access the stopwatch state
+            FocusScope.of(context).requestFocus(_bodyFocusNode);
+          }
+        } else if (_selectedIndex == 1) {
+          // If we're on the timer tab, trigger its autofocus
+          final timerState = _timerKey.currentState;
+          if (timerState != null) {
+            timerState.autofocusFirstButton();
+          } else {
+            // Fallback to body focus if we can't access the timer state
+            FocusScope.of(context).requestFocus(_bodyFocusNode);
+          }
+        } else if (_selectedIndex == 2) {
+          // If we're on the circuit tab, trigger its autofocus
+          // Use the extension to access the circuit screen state
+          final circuitState = context.circuitScreenState;
+          if (circuitState != null) {
+            circuitState.autofocusFirstButton();
+          } else {
+            // Fallback to body focus if we can't access the circuit state
+            FocusScope.of(context).requestFocus(_bodyFocusNode);
+          }
+        } else {
+          // For other screens, just focus the body
+          FocusScope.of(context).requestFocus(_bodyFocusNode);
+        }
       } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
         FocusScope.of(context).requestFocus(_focusNodes[_selectedIndex]);
       } else if (event.logicalKey == LogicalKeyboardKey.select || 

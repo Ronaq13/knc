@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class CircuitScreen extends StatefulWidget {
-  const CircuitScreen({Key? key}) : super(key: key);
+  final Function? onAutofocusRequested;
+
+  const CircuitScreen({Key? key, this.onAutofocusRequested}) : super(key: key);
 
   @override
   State<CircuitScreen> createState() => _CircuitScreenState();
@@ -74,6 +76,12 @@ class _CircuitScreenState extends State<CircuitScreen> {
       List.generate(breakOptions.length, (_) => FocusNode()),
       List.generate(roundOptions.length, (_) => FocusNode()),
     ];
+    
+    // Register the autofocus method with the parent
+    if (widget.onAutofocusRequested != null) {
+      widget.onAutofocusRequested!();
+    }
+    
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _focusNodes[0][0].requestFocus();
     });
@@ -553,4 +561,16 @@ class _CircuitScreenState extends State<CircuitScreen> {
       ),
     );
   }
+
+  // Method to autofocus the first interval button
+  void autofocusFirstButton() {
+    if (!isRunning && !isCompleted && _focusNodes.isNotEmpty && _focusNodes[0].isNotEmpty) {
+      _focusNodes[0][0].requestFocus();
+    }
+  }
+}
+
+// Extension to access the CircuitScreen state
+extension CircuitScreenExtension on BuildContext {
+  _CircuitScreenState? get circuitScreenState => findAncestorStateOfType<_CircuitScreenState>();
 }

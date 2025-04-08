@@ -3,11 +3,17 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 class StopwatchScreen extends StatefulWidget {
+  final GlobalKey<StopwatchScreenState> stopwatchKey;
+
+  StopwatchScreen({GlobalKey<StopwatchScreenState>? key}) 
+      : stopwatchKey = key ?? GlobalKey<StopwatchScreenState>(),
+        super(key: key ?? GlobalKey<StopwatchScreenState>());
+
   @override
-  _StopwatchScreenState createState() => _StopwatchScreenState();
+  StopwatchScreenState createState() => StopwatchScreenState();
 }
 
-class _StopwatchScreenState extends State<StopwatchScreen> {
+class StopwatchScreenState extends State<StopwatchScreen> {
   Stopwatch _stopwatch = Stopwatch();
   late final Ticker _ticker;
   late Duration _elapsed;
@@ -15,6 +21,10 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
 
   final _startPauseFocusNode = FocusNode();
   final _resetFocusNode = FocusNode();
+
+  void autofocusStartButton() {
+    _startPauseFocusNode.requestFocus();
+  }
 
   @override
   void initState() {
@@ -88,22 +98,15 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
         final key = event.logicalKey;
 
         if (key == LogicalKeyboardKey.arrowRight) {
-          // If this is the reset button (last button), move to next screen
           if (focusNode == _resetFocusNode) {
-            // Find the next screen's focus node through the parent
-            final parentContext = node.context!.findAncestorStateOfType<_KncHomeState>();
-            if (parentContext != null) {
-              parentContext.setState(() {
-                parentContext._selectedIndex = (parentContext._selectedIndex + 1) % 3;
-                FocusScope.of(node.context!).requestFocus(parentContext._focusNodes[parentContext._selectedIndex]);
-              });
-              return KeyEventResult.handled;
-            }
-          } else {
-            FocusScope.of(node.context!).nextFocus();
+            return KeyEventResult.handled;
           }
+          FocusScope.of(node.context!).nextFocus();
           return KeyEventResult.handled;
         } else if (key == LogicalKeyboardKey.arrowLeft) {
+          if (focusNode == _startPauseFocusNode) {
+            return KeyEventResult.handled;
+          }
           FocusScope.of(node.context!).previousFocus();
           return KeyEventResult.handled;
         } else if (key == LogicalKeyboardKey.enter ||

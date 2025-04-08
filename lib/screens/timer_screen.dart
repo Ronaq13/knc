@@ -4,13 +4,17 @@ import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class TimerScreen extends StatefulWidget {
-  const TimerScreen({Key? key}) : super(key: key);
+  final GlobalKey<TimerScreenState> timerKey;
+
+  TimerScreen({GlobalKey<TimerScreenState>? key}) 
+      : timerKey = key ?? GlobalKey<TimerScreenState>(),
+        super(key: key ?? GlobalKey<TimerScreenState>());
 
   @override
-  State<TimerScreen> createState() => _TimerScreenState();
+  TimerScreenState createState() => TimerScreenState();
 }
 
-class _TimerScreenState extends State<TimerScreen> {
+class TimerScreenState extends State<TimerScreen> {
   // Generate durations from 30 seconds to 5 minutes (10 options, 30s intervals)
   final List<Duration> durations = List.generate(
     10,
@@ -32,6 +36,13 @@ class _TimerScreenState extends State<TimerScreen> {
 
   // We store one FocusNode per timer button.
   late List<FocusNode> _focusNodes;
+
+  // Method to autofocus the first timer button
+  void autofocusFirstButton() {
+    if (_showGrid && _focusNodes.isNotEmpty) {
+      _focusNodes.first.requestFocus();
+    }
+  }
 
   @override
   void initState() {
@@ -56,13 +67,13 @@ class _TimerScreenState extends State<TimerScreen> {
           _remaining = Duration.zero;
         });
         _stop();
-        // In case the end sound wasn’t started already.
+        // In case the end sound wasn't started already.
         if (!_playedEndSound) {
           _playEndSoundAndShowGrid();
           _playedEndSound = true;
         }
       } else {
-        // When timeLeft goes to 3 seconds (and if we haven’t played end sound yet)
+        // When timeLeft goes to 3 seconds (and if we haven't played end sound yet)
         if (!_playedEndSound && timeLeft.inSeconds <= 3) {
           _playEndSoundAndShowGrid();
           _playedEndSound = true;
@@ -202,9 +213,19 @@ class _TimerScreenState extends State<TimerScreen> {
 
         // Simplified: Just move linearly across the list with arrow keys
         if (key == LogicalKeyboardKey.arrowRight) {
-          if (index + 1 < durations.length) newIndex = index + 1;
+          // Prevent navigation to next screen when on last button
+          if (index + 1 < durations.length) {
+            newIndex = index + 1;
+          } else {
+            return KeyEventResult.handled;
+          }
         } else if (key == LogicalKeyboardKey.arrowLeft) {
-          if (index - 1 >= 0) newIndex = index - 1;
+          // Prevent navigation to previous screen when on first button
+          if (index - 1 >= 0) {
+            newIndex = index - 1;
+          } else {
+            return KeyEventResult.handled;
+          }
         } else if (key == LogicalKeyboardKey.enter ||
             key == LogicalKeyboardKey.select) {
           _start(duration);
