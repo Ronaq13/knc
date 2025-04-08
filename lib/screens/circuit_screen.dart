@@ -95,19 +95,21 @@ class CircuitScreenState extends State<CircuitScreen> {
         ..reset();
       _lastBeepSecond = null;
       if (isCountdown) {
+        // print("_onTick: Countdown finished, starting interval");
         isCountdown = false;
         _startInterval();
       } else if (isBreak) {
+        // print("_onTick: Break finished, starting interval. Current round: $currentRound");
         _startInterval();
       } else {
-        if (currentRound < (rounds ?? 0)) {
-          if (currentRound == (rounds ?? 0)) {
-            _completeWorkout();
-          } else {
-            _startBreak();
-          }
-        } else {
+        // Check if we've completed all rounds
+        // print("_onTick: Interval finished, checking if all rounds completed. Current round: $currentRound, Total rounds: ${rounds ?? 0}");
+        if (currentRound >= (rounds ?? 0)) {
+          // print("_onTick: All rounds completed, completing workout");
           _completeWorkout();
+        } else {
+          // print("_onTick: Starting break for round $currentRound");
+          _startBreak();
         }
       }
     } else {
@@ -131,6 +133,7 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startCountdown() {
+    // print("_startCountdown: Starting countdown, currentRound = $currentRound");
     setState(() {
       isBreak = false;
       isCountdown = true;
@@ -153,13 +156,23 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startInterval() {
+    // print("_startInterval: Before increment, currentRound = $currentRound");
     _playSound('start.mp3');
     setState(() {
       isBreak = false;
       isCountdown = false;
       totalPhaseDuration = interval!;
       remaining = interval!;
-      currentRound += 1;
+      
+      // Only increment if we're not in the countdown phase
+      // This ensures we don't increment twice when starting the circuit
+      if (!isCountdown) {
+        currentRound++;
+        // print("_startInterval: After increment, currentRound = $currentRound");
+      } else {
+        // print("_startInterval: Skipping increment because isCountdown is true");
+      }
+      
       _lastBeepSecond = null;
       stopwatch
         ..reset()
@@ -177,12 +190,9 @@ class CircuitScreenState extends State<CircuitScreen> {
   void _startBreak() {
     _audioPlayer.stop();
 
+    // Check if we've completed all rounds
     if (currentRound >= (rounds ?? 0)) {
       _completeWorkout();
-      return;
-    }
-    if (currentRound == 0) {
-      _startInterval();
       return;
     }
 
@@ -206,30 +216,31 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startCircuit() {
+    // print("_startCircuit: Setting currentRound to 0");
     setState(() {
       isRunning = true;
       isCompleted = false;
-      currentRound = 0;
+      currentRound = 0; // Start from 0, will be incremented to 1 in _startInterval
       isPaused = false;
+      isBreak = false;
+      isCountdown = true; // Start with countdown
     });
     
-    // Start the interval after a short delay to ensure the UI is updated
-    Future.delayed(Duration(milliseconds: 50), () {
-      _startInterval();
+    // Start with countdown instead of interval
+    _startCountdown();
+    
+    // Set focus to pause button when circuit starts
+    // Only if no button is currently focused and we're not transitioning from a button
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      // Check if the focus is currently on the bottom navigation bar
+      // If it is, don't request focus on the Pause button
+      final currentFocus = FocusManager.instance.primaryFocus;
+      final isBottomNavFocused = currentFocus != null && 
+          (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
       
-      // Set focus to pause button when circuit starts
-      // Only if no button is currently focused and we're not transitioning from a button
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        // Check if the focus is currently on the bottom navigation bar
-        // If it is, don't request focus on the Pause button
-        final currentFocus = FocusManager.instance.primaryFocus;
-        final isBottomNavFocused = currentFocus != null && 
-            (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
-        
-        if (!_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
-          _pauseFocusNode.requestFocus();
-        }
-      });
+      if (!_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
+        _pauseFocusNode.requestFocus();
+      }
     });
   }
 
@@ -271,12 +282,13 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _resetState() {
+    // print("_resetState: Resetting currentRound to 0");
     _audioPlayer.stop();
     setState(() {
       isRunning = false;
       isPaused = false;
       isCompleted = false;
-      currentRound = 0;
+      currentRound = 0; // Reset to 0
       isBreak = false;
       isCountdown = false;
       stopwatch.stop();
@@ -503,6 +515,11 @@ class CircuitScreenState extends State<CircuitScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final labelHeight = screenHeight * 0.04;
 
+    // Add debug print for rounds selection
+    // if (label == 'Rounds') {
+    //   print("_buildSelection: Building rounds selection, currentRound = $currentRound");
+    // }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -556,10 +573,12 @@ class CircuitScreenState extends State<CircuitScreen> {
     if (isCompleted) {
       title = "Workout complete!";
     } else if (isBreak) {
-      title = "Round $currentRound completed";
+      title = "Break time. Round $currentRound completed";
     } else {
       title = "Round $currentRound / $rounds";
     }
+    
+    // print("_buildTimerUI: Displaying title: $title, currentRound = $currentRound");
 
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25; // 25% of height
