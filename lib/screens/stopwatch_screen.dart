@@ -123,15 +123,17 @@ class StopwatchScreenState extends State<StopwatchScreen> {
           final screenHeight = MediaQuery.of(context).size.height;
           final screenWidth = MediaQuery.of(context).size.width;
           final buttonHeight = screenHeight * 0.10;
-          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final minButtonWidth = screenWidth * 0.10; // Adjust width as needed
           final fontSize = buttonHeight * 0.3; // 30% of height
 
           return GestureDetector(
             onTap: onPressed,
             child: Container(
               height: buttonHeight,
-              width: buttonWidth,
-              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              constraints: BoxConstraints(
+                minWidth: minButtonWidth,
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 16),
               margin: EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: isFocused ? Colors.blue : Colors.grey[800],

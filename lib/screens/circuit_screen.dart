@@ -474,15 +474,17 @@ class CircuitScreenState extends State<CircuitScreen> {
           final screenHeight = MediaQuery.of(context).size.height;
           final screenWidth = MediaQuery.of(context).size.width;
           final buttonHeight = screenHeight * 0.10;
-          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+          final minButtonWidth = screenWidth * 0.10; // Minimum width of 10% screen width
           final fontSize = buttonHeight * 0.3; // 30% of height
 
           return GestureDetector(
             onTap: onPressed,
             child: Container(
               height: buttonHeight,
-              width: buttonWidth,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              constraints: BoxConstraints(
+                minWidth: minButtonWidth,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
               margin: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: isFocused ? Colors.blue : Colors.grey[800],
@@ -540,7 +542,7 @@ class CircuitScreenState extends State<CircuitScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        // const SizedBox(height: 16),
       ],
     );
   }
