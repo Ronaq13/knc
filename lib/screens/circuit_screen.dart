@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class CircuitScreen extends StatefulWidget {
@@ -55,10 +56,20 @@ class _CircuitScreenState extends State<CircuitScreen> {
   final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20, 25];
   int? _lastBeepSecond;
 
+  late List<List<FocusNode>> _focusNodes;
+
   @override
   void initState() {
     super.initState();
     _ticker = Ticker(_onTick)..start();
+    _focusNodes = [
+      List.generate(intervalOptions.length, (_) => FocusNode()),
+      List.generate(breakOptions.length, (_) => FocusNode()),
+      List.generate(roundOptions.length, (_) => FocusNode()),
+    ];
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _focusNodes[0][0].requestFocus();
+    });
   }
 
   void _onTick(Duration elapsed) {
@@ -96,7 +107,6 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _maybePlayBeep(Duration timeLeft) {
-    // Only play during intervals (not breaks)
     if (isBreak) return;
 
     int secondsLeft = timeLeft.inSeconds;
@@ -104,7 +114,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       _lastBeepSecond = secondsLeft;
       _playSound('end.mp3');
     } else if (secondsLeft > 4 || secondsLeft <= 0) {
-      _lastBeepSecond = null; // Reset when outside the 4-second window
+      _lastBeepSecond = null;
     }
   }
 
@@ -121,10 +131,9 @@ class _CircuitScreenState extends State<CircuitScreen> {
     });
   }
 
-  // Add this method to play sounds
   Future<void> _playSound(String soundFile) async {
     try {
-      await _audioPlayer.stop(); // Stop any current playback
+      await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource('sounds/$soundFile'));
     } catch (e) {
       debugPrint('Error playing sound $soundFile: $e');
@@ -147,7 +156,6 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startBreak() {
-    // Stop any currently playing sounds
     _audioPlayer.stop();
 
     if (currentRound >= (rounds ?? 0)) {
@@ -181,8 +189,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _completeWorkout() {
-    _audioPlayer.stop(); // Stop any playing sounds
-
+    _audioPlayer.stop();
     setState(() {
       isCompleted = true;
       isRunning = false;
@@ -192,8 +199,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _resetState() {
-    _audioPlayer.stop(); // Stop any playing sounds
-
+    _audioPlayer.stop();
     setState(() {
       isRunning = false;
       isPaused = false;
@@ -210,20 +216,73 @@ class _CircuitScreenState extends State<CircuitScreen> {
     return '${two(d.inMinutes)}:${two(d.inSeconds % 60)}';
   }
 
-  Widget _buildOptionButton<T>(T value, T? selected, void Function(T) onTap) {
-    return GestureDetector(
-      onTap: () => onTap(value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-        margin: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: selected == value ? Colors.amber : Colors.grey[800],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          value is Duration ? _format(value) : value.toString(),
-          style: const TextStyle(fontSize: 20, color: Colors.white),
-        ),
+  Widget _buildOptionButton<T>(
+    T value,
+    T? selected,
+    void Function(T) onTap,
+    FocusNode focusNode,
+    int rowIndex,
+    int colIndex,
+  ) {
+    return Focus(
+      focusNode: focusNode,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+
+        int newRow = rowIndex;
+        int newCol = colIndex;
+
+        if (key == LogicalKeyboardKey.arrowRight)
+          newCol++;
+        else if (key == LogicalKeyboardKey.arrowLeft)
+          newCol--;
+        else if (key == LogicalKeyboardKey.arrowDown)
+          newRow++;
+        else if (key == LogicalKeyboardKey.arrowUp)
+          newRow--;
+
+        if (newRow >= 0 && newRow < _focusNodes.length) {
+          if (newCol >= 0 && newCol < _focusNodes[newRow].length) {
+            _focusNodes[newRow][newCol].requestFocus();
+            return KeyEventResult.handled;
+          }
+        }
+
+        if (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.select) {
+          onTap(value);
+          return KeyEventResult.handled;
+        }
+
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final isFocused = Focus.of(context).hasFocus;
+          return GestureDetector(
+            onTap: () => onTap(value),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              margin: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color:
+                    selected == value
+                        ? Colors.amber
+                        : (isFocused ? Colors.blue : Colors.grey[800]),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isFocused ? Colors.white : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                value is Duration ? _format(value) : value.toString(),
+                style: const TextStyle(fontSize: 20, color: Colors.white),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -233,16 +292,24 @@ class _CircuitScreenState extends State<CircuitScreen> {
     List<T> options,
     T? selected,
     void Function(T) onTap,
+    int rowIndex,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 24, color: Colors.white)),
         Wrap(
-          children:
-              options
-                  .map((e) => _buildOptionButton<T>(e, selected, onTap))
-                  .toList(),
+          children: List.generate(
+            options.length,
+            (i) => _buildOptionButton<T>(
+              options[i],
+              selected,
+              onTap,
+              _focusNodes[rowIndex][i],
+              rowIndex,
+              i,
+            ),
+          ),
         ),
         const SizedBox(height: 16),
       ],
@@ -294,29 +361,34 @@ class _CircuitScreenState extends State<CircuitScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildSelection<Duration>(
-          'Interval',
-          intervalOptions,
-          interval,
-          (val) => setState(() => interval = val),
-        ),
+        _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
+          setState(() => interval = val);
+
+          if (breakDuration == null) {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _focusNodes[1][0].requestFocus(); // Focus Break row
+            });
+          }
+        }, 0),
         if (interval != null)
-          _buildSelection<Duration>(
-            'Break',
-            breakOptions,
-            breakDuration,
-            (val) => setState(() => breakDuration = val),
-          ),
+          _buildSelection<Duration>('Break', breakOptions, breakDuration, (
+            val,
+          ) {
+            setState(() => breakDuration = val);
+
+            if (rounds == null) {
+              Future.delayed(const Duration(milliseconds: 100), () {
+                _focusNodes[2][0].requestFocus(); // Focus Round row
+              });
+            }
+          }, 1),
         if (interval != null && breakDuration != null)
-          _buildSelection<int>(
-            'Rounds',
-            roundOptions,
-            rounds,
-            (val) => setState(() {
+          _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
+            setState(() {
               rounds = val;
               _startCircuit();
-            }),
-          ),
+            });
+          }, 2),
       ],
     );
   }
@@ -326,6 +398,11 @@ class _CircuitScreenState extends State<CircuitScreen> {
     _ticker.dispose();
     stopwatch.stop();
     _audioPlayer.dispose();
+    for (var list in _focusNodes) {
+      for (var node in list) {
+        node.dispose();
+      }
+    }
     super.dispose();
   }
 
