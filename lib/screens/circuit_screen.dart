@@ -28,6 +28,13 @@ class _CircuitScreenState extends State<CircuitScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Duration countdownTime = Duration(seconds: 3);
 
+  // Focus nodes for control buttons
+  final FocusNode _pauseFocusNode = FocusNode();
+  final FocusNode _resetFocusNode = FocusNode();
+
+  // Time when pause was pressed
+  Duration? _pausedRemaining;
+
   final List<Duration> intervalOptions = [
     Duration(seconds: 15),
     Duration(seconds: 30),
@@ -184,8 +191,34 @@ class _CircuitScreenState extends State<CircuitScreen> {
       isRunning = true;
       isCompleted = false;
       currentRound = 0;
+      isPaused = false;
     });
     _startInterval();
+
+    // Set focus to pause button when circuit starts
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _pauseFocusNode.requestFocus();
+    });
+  }
+
+  void _togglePause() {
+    setState(() {
+      isPaused = !isPaused;
+      if (isPaused) {
+        // Store the remaining time when paused
+        _pausedRemaining = remaining;
+        stopwatch.stop();
+      } else {
+        // Adjust the total phase duration to account for pause time
+        if (_pausedRemaining != null) {
+          totalPhaseDuration = _pausedRemaining!;
+          remaining = _pausedRemaining!;
+          stopwatch.reset();
+          stopwatch.start();
+          _pausedRemaining = null;
+        }
+      }
+    });
   }
 
   void _completeWorkout() {
@@ -208,6 +241,7 @@ class _CircuitScreenState extends State<CircuitScreen> {
       isBreak = false;
       isCountdown = false;
       stopwatch.stop();
+      _pausedRemaining = null;
     });
   }
 
@@ -226,31 +260,39 @@ class _CircuitScreenState extends State<CircuitScreen> {
   ) {
     return Focus(
       focusNode: focusNode,
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        final key = event.logicalKey;
+      onKey: (FocusNode node, RawKeyEvent event) {
+        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
 
-        int newRow = rowIndex;
-        int newCol = colIndex;
+        // Handle arrow key navigation
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+            event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+            event.logicalKey == LogicalKeyboardKey.arrowDown ||
+            event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          int newRow = rowIndex;
+          int newCol = colIndex;
 
-        if (key == LogicalKeyboardKey.arrowRight)
-          newCol++;
-        else if (key == LogicalKeyboardKey.arrowLeft)
-          newCol--;
-        else if (key == LogicalKeyboardKey.arrowDown)
-          newRow++;
-        else if (key == LogicalKeyboardKey.arrowUp)
-          newRow--;
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight)
+            newCol++;
+          else if (event.logicalKey == LogicalKeyboardKey.arrowLeft)
+            newCol--;
+          else if (event.logicalKey == LogicalKeyboardKey.arrowDown)
+            newRow++;
+          else if (event.logicalKey == LogicalKeyboardKey.arrowUp)
+            newRow--;
 
-        if (newRow >= 0 && newRow < _focusNodes.length) {
-          if (newCol >= 0 && newCol < _focusNodes[newRow].length) {
-            _focusNodes[newRow][newCol].requestFocus();
-            return KeyEventResult.handled;
+          if (newRow >= 0 && newRow < _focusNodes.length) {
+            if (newCol >= 0 && newCol < _focusNodes[newRow].length) {
+              _focusNodes[newRow][newCol].requestFocus();
+              return KeyEventResult.handled;
+            }
           }
+          return KeyEventResult.ignored;
         }
-
-        if (key == LogicalKeyboardKey.enter ||
-            key == LogicalKeyboardKey.select) {
+        // Handle selection with Enter/OK key
+        else if (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.select ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+            event.logicalKey == LogicalKeyboardKey.gameButtonSelect) {
           onTap(value);
           return KeyEventResult.handled;
         }
@@ -278,6 +320,62 @@ class _CircuitScreenState extends State<CircuitScreen> {
               ),
               child: Text(
                 value is Duration ? _format(value) : value.toString(),
+                style: const TextStyle(fontSize: 20, color: Colors.white),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget buildTVButton({
+    required String label,
+    required VoidCallback onPressed,
+    required FocusNode focusNode,
+  }) {
+    return Focus(
+      focusNode: focusNode,
+      onKey: (FocusNode node, RawKeyEvent event) {
+        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+
+        // Handle left-right navigation
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          FocusScope.of(node.context!).nextFocus();
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          FocusScope.of(node.context!).previousFocus();
+          return KeyEventResult.handled;
+        }
+        // Handle Enter/OK key press
+        else if (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.select ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+            event.logicalKey == LogicalKeyboardKey.gameButtonSelect) {
+          onPressed();
+          return KeyEventResult.handled;
+        }
+
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final isFocused = Focus.of(context).hasFocus;
+          return GestureDetector(
+            onTap: onPressed,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: isFocused ? Colors.blue : Colors.grey[800],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isFocused ? Colors.white : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                label,
                 style: const TextStyle(fontSize: 20, color: Colors.white),
               ),
             ),
@@ -317,18 +415,23 @@ class _CircuitScreenState extends State<CircuitScreen> {
   }
 
   Widget _buildControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
-          onPressed: () {
-            setState(() => isPaused = !isPaused);
-          },
-          child: Text(isPaused ? 'Resume' : 'Pause'),
-        ),
-        const SizedBox(width: 20),
-        ElevatedButton(onPressed: _resetState, child: const Text('Reset')),
-      ],
+    return FocusTraversalGroup(
+      policy: ReadingOrderTraversalPolicy(),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          buildTVButton(
+            label: isPaused ? 'Resume' : 'Pause',
+            onPressed: _togglePause,
+            focusNode: _pauseFocusNode,
+          ),
+          buildTVButton(
+            label: 'Reset',
+            onPressed: _resetState,
+            focusNode: _resetFocusNode,
+          ),
+        ],
+      ),
     );
   }
 
@@ -398,6 +501,8 @@ class _CircuitScreenState extends State<CircuitScreen> {
     _ticker.dispose();
     stopwatch.stop();
     _audioPlayer.dispose();
+    _pauseFocusNode.dispose();
+    _resetFocusNode.dispose();
     for (var list in _focusNodes) {
       for (var node in list) {
         node.dispose();
