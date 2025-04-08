@@ -579,57 +579,69 @@ class CircuitScreenState extends State<CircuitScreen> {
       }
     });
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          title,
-          style: TextStyle(fontSize: titleFontSize, color: Colors.black),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _format(remaining),
-          style: TextStyle(fontSize: timerFontSize, color: Colors.black),
-        ),
-        const SizedBox(height: 32),
-        if (!isCompleted) _buildControls(),
-      ],
+    return Container(
+      // Ensure no focus border appears on this container
+      decoration: BoxDecoration(
+        border: null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontSize: titleFontSize, color: Colors.black),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _format(remaining),
+            style: TextStyle(fontSize: timerFontSize, color: Colors.black),
+          ),
+          const SizedBox(height: 32),
+          if (!isCompleted) _buildControls(),
+        ],
+      ),
     );
   }
 
   Widget _buildConfigUI() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
-          setState(() => interval = val);
+    return Container(
+      // Ensure no focus border appears on this container
+      decoration: BoxDecoration(
+        border: null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
+            setState(() => interval = val);
 
-          if (breakDuration == null) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              _focusNodes[1][0].requestFocus(); // Focus Break row
-            });
-          }
-        }, 0),
-        if (interval != null)
-          _buildSelection<Duration>('Break', breakOptions, breakDuration, (
-            val,
-          ) {
-            setState(() => breakDuration = val);
-
-            if (rounds == null) {
+            if (breakDuration == null) {
               Future.delayed(const Duration(milliseconds: 100), () {
-                _focusNodes[2][0].requestFocus(); // Focus Round row
+                _focusNodes[1][0].requestFocus(); // Focus Break row
               });
             }
-          }, 1),
-        if (interval != null && breakDuration != null)
-          _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
-            setState(() {
-              rounds = val;
-              _startCircuit();
-            });
-          }, 2),
-      ],
+          }, 0),
+          if (interval != null)
+            _buildSelection<Duration>('Break', breakOptions, breakDuration, (
+              val,
+            ) {
+              setState(() => breakDuration = val);
+
+              if (rounds == null) {
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  _focusNodes[2][0].requestFocus(); // Focus Round row
+                });
+              }
+            }, 1),
+          if (interval != null && breakDuration != null)
+            _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
+              setState(() {
+                rounds = val;
+                _startCircuit();
+              });
+            }, 2),
+        ],
+      ),
     );
   }
 
@@ -672,7 +684,13 @@ class CircuitScreenState extends State<CircuitScreen> {
                   }
                   return KeyEventResult.ignored;
                 },
-                child: _buildTimerUI(),
+                child: Container(
+                  // Ensure no focus border appears on this container
+                  decoration: BoxDecoration(
+                    border: null,
+                  ),
+                  child: _buildTimerUI(),
+                ),
               )
             : _buildConfigUI(),
       ),

@@ -195,9 +195,7 @@ class _KncHomeState extends State<KncHome> {
           focusNode: _bodyFocusNode,
           child: Container(
             decoration: BoxDecoration(
-              border: _bodyFocusNode.hasFocus
-                  ? Border.all(color: Colors.blue, width: 2)
-                  : null,
+              border: null,
             ),
             child: _pages[_selectedIndex],
           ),
@@ -237,7 +235,7 @@ class _KncHomeState extends State<KncHome> {
                       return Container(
                         height: MediaQuery.of(context).size.height * 0.04,
                         decoration: BoxDecoration(
-                          border: hasFocus ? Border.all(color: Colors.blue, width: 2) : null,
+                          border: null,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: EdgeInsets.all(hasFocus ? 4 : 0),
@@ -270,7 +268,7 @@ class _KncHomeState extends State<KncHome> {
                       return Container(
                         height: MediaQuery.of(context).size.height * 0.04,
                         decoration: BoxDecoration(
-                          border: hasFocus ? Border.all(color: Colors.blue, width: 2) : null,
+                          border: null,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: EdgeInsets.all(hasFocus ? 4 : 0),
@@ -307,7 +305,7 @@ class _KncHomeState extends State<KncHome> {
                       return Container(
                         height: MediaQuery.of(context).size.height * 0.04,
                         decoration: BoxDecoration(
-                          border: hasFocus ? Border.all(color: Colors.blue, width: 2) : null,
+                          border: null,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: EdgeInsets.all(hasFocus ? 4 : 0),
