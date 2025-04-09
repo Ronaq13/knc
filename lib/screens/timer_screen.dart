@@ -310,6 +310,14 @@ class TimerScreenState extends State<TimerScreen> {
           if (!_isCountdown && !_isRunning) {
             setState(() {
               _showGrid = true; // Show grid after sound completes
+              _currentFocusIndex = 0; // Reset to first button
+            });
+            
+            // Request focus on the first button after the UI updates
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
+                _timerButtonFocusNodes[0].requestFocus();
+              }
             });
           }
         }
@@ -321,6 +329,14 @@ class TimerScreenState extends State<TimerScreen> {
       if (mounted && !_isCountdown && !_isRunning) {
         setState(() {
           _showGrid = true;
+          _currentFocusIndex = 0; // Reset to first button
+        });
+        
+        // Request focus on the first button after the UI updates
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
+            _timerButtonFocusNodes[0].requestFocus();
+          }
         });
       }
     }
@@ -340,6 +356,11 @@ class TimerScreenState extends State<TimerScreen> {
             print("ESC detected - handling back press");
             _handleBackPress();
           } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning) {
+            _togglePause();
+          } else if ((event.logicalKey == LogicalKeyboardKey.enter || 
+                     event.logicalKey == LogicalKeyboardKey.select) && 
+                     _isRunning && !_isCountdown && _pauseButtonFocusNode.hasFocus) {
+            // Activate pause button when it's focused and Enter/Select is pressed
             _togglePause();
           } else if (_showGrid) {
             // Handle grid navigation with arrow keys
@@ -524,7 +545,7 @@ class TimerScreenState extends State<TimerScreen> {
           padding: EdgeInsets.all(16),
           child: Icon(
             _isPaused ? Icons.play_arrow : Icons.pause,
-            color: Colors.black,
+            color: _pauseButtonFocusNode.hasFocus ? Colors.blue : Colors.black,
             size: MediaQuery.of(context).size.height * 0.05,
           ),
         ),
