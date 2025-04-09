@@ -48,13 +48,11 @@ class TimerScreenState extends State<TimerScreen> {
       if (sanitizedTimeLeft == Duration.zero) {
         if (_isCountdown) {
           // Countdown is complete, start the actual timer
-          print('Countdown complete - transitioning to actual timer');
           _startActualTimer();
           
           // Safety check to ensure grid is not shown after countdown
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _showGrid && _isRunning && !_isCountdown) {
-              print('Critical correction: Hiding grid that was incorrectly shown after countdown');
               setState(() {
                 _showGrid = false;
               });
@@ -103,7 +101,6 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _startActualTimer() {
-    print('Starting actual timer - ensuring grid is hidden');
     setState(() {
       _isCountdown = false;
       _isRunning = true;
@@ -125,7 +122,6 @@ class TimerScreenState extends State<TimerScreen> {
     // This is a safety measure in case another part of the code is setting _showGrid = true
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _showGrid && _isRunning) {
-        print('Post-frame correction: Hiding grid that was incorrectly shown');
         setState(() {
           _showGrid = false;
         });
@@ -138,7 +134,6 @@ class TimerScreenState extends State<TimerScreen> {
       await _player.stop();
       await _player.play(AssetSource('sounds/$soundFile'));
     } catch (e) {
-      print('Error playing sound: $e');
     }
   }
 
@@ -204,10 +199,8 @@ class TimerScreenState extends State<TimerScreen> {
       // Only set up the listener for grid display for end sound, not start sound
       _player.onPlayerComplete.listen((event) {
         if (mounted) {
-          print('End sound completed - timer state: running=${_isRunning}, countdown=${_isCountdown}');
           // Only show grid on timer completion, not during transitions
           if (!_isCountdown && !_isRunning) {
-            print('Showing grid after end sound completed');
             setState(() {
               _showGrid = true; // Show grid after sound completes
             });
@@ -217,7 +210,6 @@ class TimerScreenState extends State<TimerScreen> {
       
       await _player.play(AssetSource('sounds/end.mp3'));
     } catch (e) {
-      print('Error playing end sound: $e');
       // If sound fails, still show the grid but only if timer is complete
       if (mounted && !_isCountdown && !_isRunning) {
         setState(() {
@@ -266,9 +258,6 @@ class TimerScreenState extends State<TimerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Added debug output to identify the state
-    print('Build Timer Screen: showGrid=$_showGrid, isRunning=$_isRunning, isCountdown=$_isCountdown');
-    
     return KeyboardListener(
       focusNode: _keyboardFocusNode,
       onKeyEvent: _handleKeyEvent,
@@ -400,7 +389,7 @@ class TimerScreenState extends State<TimerScreen> {
           child: Icon(
             _isPaused ? Icons.play_arrow : Icons.pause,
             color: Colors.black,
-            size: 40,
+            size: MediaQuery.of(context).size.height * 0.05,
           ),
         ),
       ),

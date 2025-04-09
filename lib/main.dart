@@ -85,7 +85,7 @@ class _KncHomeState extends State<KncHome> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {  
     return Scaffold(
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(
@@ -138,7 +138,7 @@ class _KncHomeState extends State<KncHome> {
                     onTap: _navigateToTimer,
                     child: Icon(
                       Icons.timer,
-                      size: MediaQuery.of(context).size.height * 0.04,
+                      size: MediaQuery.of(context).size.height * 0.05,
                     ),
                   ),
                   SizedBox(width: 20),
@@ -146,7 +146,7 @@ class _KncHomeState extends State<KncHome> {
                     onTap: _navigateToCircuit,
                     child: Icon(
                       Icons.loop,
-                      size: MediaQuery.of(context).size.height * 0.04,
+                      size: MediaQuery.of(context).size.height * 0.05,
                     ),
                   ),
                 ],

@@ -27,6 +27,7 @@ class CircuitScreenState extends State<CircuitScreen> {
   late final Ticker _ticker;
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Duration countdownTime = Duration(seconds: 3);
+  final FocusNode _keyboardFocusNode = FocusNode();
 
   // Public getters for external access
   bool get isCircuitRunning => isRunning;
@@ -48,9 +49,14 @@ class CircuitScreenState extends State<CircuitScreen> {
     Duration(minutes: 4),
     Duration(minutes: 5),
     Duration(minutes: 8),
+    Duration(minutes: 10),
+    Duration(minutes: 15),
+    Duration(minutes: 20),
+    Duration(minutes: 30),
   ];
 
   final List<Duration> breakOptions = [
+    Duration(seconds: 0),
     Duration(seconds: 5),
     Duration(seconds: 10),
     Duration(seconds: 15),
@@ -60,7 +66,7 @@ class CircuitScreenState extends State<CircuitScreen> {
     Duration(minutes: 2),
   ];
 
-  final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20, 25];
+  final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20];
   int? _lastBeepSecond;
 
   @override
@@ -88,6 +94,10 @@ class CircuitScreenState extends State<CircuitScreen> {
         if (currentRound >= (rounds ?? 0)) {
           _completeWorkout();
         } else {
+          // Increment round after an interval completes but before starting break
+          setState(() {
+            currentRound++;
+          });
           _startBreak();
         }
       }
@@ -100,18 +110,32 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _maybePlayBeep(Duration timeLeft) {
-    if (isBreak) return;
+    // Play start sound when 3 seconds left in break phase
+    if (isBreak) {
+      int secondsLeft = timeLeft.inSeconds;
+      if (secondsLeft == 3 && _lastBeepSecond != secondsLeft) {
+        _lastBeepSecond = secondsLeft;
+        _playSound('start.mp3');
+      }
+      return;
+    }
+    
+    // Don't play sounds during countdown
+    if (isCountdown) return;
 
+    // Only play end sound during interval (not during break)
     int secondsLeft = timeLeft.inSeconds;
-    if (secondsLeft == 4 && _lastBeepSecond != secondsLeft) {
+    if (secondsLeft == 1 && _lastBeepSecond != secondsLeft) {
       _lastBeepSecond = secondsLeft;
       _playSound('end.mp3');
-    } else if (secondsLeft > 4 || secondsLeft <= 0) {
+    } else if (secondsLeft > 1 || secondsLeft <= 0) {
       _lastBeepSecond = null;
     }
   }
 
   void _startCountdown() {
+    _playSound('start.mp3');
+    
     setState(() {
       isBreak = false;
       isCountdown = true;
@@ -133,19 +157,12 @@ class CircuitScreenState extends State<CircuitScreen> {
     }
   }
 
-  void _startInterval() {
-    _playSound('start.mp3');
+  void _startInterval() {    
     setState(() {
       isBreak = false;
       isCountdown = false;
       totalPhaseDuration = interval!;
       remaining = interval!;
-      
-      // Only increment if we're not in the countdown phase
-      if (!isCountdown) {
-        currentRound++;
-      }
-      
       _lastBeepSecond = null;
       stopwatch
         ..reset()
@@ -156,9 +173,11 @@ class CircuitScreenState extends State<CircuitScreen> {
   void _startBreak() {
     _audioPlayer.stop();
 
-    // Check if we've completed all rounds
-    if (currentRound >= (rounds ?? 0)) {
-      _completeWorkout();
+    // If break duration is 0, skip directly to next interval
+    if (breakDuration!.inSeconds == 0) {
+      // Play start sound immediately for 0-second breaks
+      _playSound('start.mp3');
+      _startInterval();
       return;
     }
 
@@ -178,10 +197,17 @@ class CircuitScreenState extends State<CircuitScreen> {
     setState(() {
       isRunning = true;
       isCompleted = false;
-      currentRound = 0; // Start from 0, will be incremented to 1 in _startInterval
+      currentRound = 1; // Start from round 1 instead of 0
       isPaused = false;
       isBreak = false;
       isCountdown = true; // Start with countdown
+    });
+    
+    // Ensure keyboard focus for key events
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_keyboardFocusNode != null && !_keyboardFocusNode.hasFocus) {
+        _keyboardFocusNode.requestFocus();
+      }
     });
     
     // Start with countdown instead of interval
@@ -215,6 +241,9 @@ class CircuitScreenState extends State<CircuitScreen> {
       isRunning = false;
       isPaused = false;
       stopwatch.stop();
+      
+      // Move back to configuration UI after completing the workout
+      _resetState();
     });
   }
 
@@ -224,11 +253,18 @@ class CircuitScreenState extends State<CircuitScreen> {
       isRunning = false;
       isPaused = false;
       isCompleted = false;
-      currentRound = 0; // Reset to 0
+      currentRound = 1; // Reset to 1
       isBreak = false;
       isCountdown = false;
       stopwatch.stop();
       _pausedRemaining = null;
+    });
+    
+    // Ensure keyboard focus is maintained when resetting
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_keyboardFocusNode != null && !_keyboardFocusNode.hasFocus) {
+        _keyboardFocusNode.requestFocus();
+      }
     });
   }
 
@@ -324,6 +360,19 @@ class CircuitScreenState extends State<CircuitScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
+            isCountdown 
+              ? 'Starting Soon' 
+              : isBreak 
+                ? 'Break' 
+                : 'Round $currentRound / ${rounds ?? 0}',
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Text(
             _format(remaining),
             style: TextStyle(
               fontSize: timerFontSize,
@@ -334,26 +383,27 @@ class CircuitScreenState extends State<CircuitScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-          Text(
-            'Round $currentRound of ${rounds ?? 0}',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              buildTVButton(
-                onPressed: _togglePause,
-                label: isPaused ? 'Resume' : 'Pause',
-              ),
-              const SizedBox(width: 20),
-              buildTVButton(
-                onPressed: _resetState,
-                label: 'Reset',
+              if (!isCountdown)
+              GestureDetector(
+                onTap: _togglePause,
+                child: Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Colors.transparent,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    isPaused ? Icons.play_arrow : Icons.pause,
+                    color: Colors.black,
+                    size: 40,
+                  ),
+                ),
               ),
             ],
           ),
@@ -363,28 +413,29 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   Widget _buildConfigUI() {
-    return Container(
-      decoration: BoxDecoration(
-        border: null,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
-            setState(() => interval = val);
-          }, 0),
-          if (interval != null)
-            _buildSelection<Duration>('Break', breakOptions, breakDuration, (val) {
-              setState(() => breakDuration = val);
-            }, 1),
-          if (interval != null && breakDuration != null)
-            _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
-              setState(() {
-                rounds = val;
-                _startCircuit();
-              });
-            }, 2),
-        ],
+    // Use SingleChildScrollView to ensure content fits on screen
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
+              setState(() => interval = val);
+            }, 0),
+            if (interval != null)
+              _buildSelection<Duration>('Break', breakOptions, breakDuration, (val) {
+                setState(() => breakDuration = val);
+              }, 1),
+            if (interval != null && breakDuration != null)
+              _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
+                setState(() {
+                  rounds = val;
+                  _startCircuit();
+                });
+              }, 2),
+          ],
+        ),
       ),
     );
   }
@@ -409,10 +460,13 @@ class CircuitScreenState extends State<CircuitScreen> {
             ),
           ),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        // Wrap the options in a Wrap widget to flow to next line if needed
+        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.start,
             children: options.map((option) {
               return _buildOptionButton(
                 option,
@@ -428,30 +482,55 @@ class CircuitScreenState extends State<CircuitScreen> {
     );
   }
 
+  void _handleBackPress() {
+    _audioPlayer.stop();
+    if (isRunning) {
+      _resetState();
+    } else if (!isRunning && !isCompleted) {
+      // Only navigate back if we're already on the config screen
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   void dispose() {
     _ticker.dispose();
     stopwatch.stop();
     _audioPlayer.dispose();
+    _keyboardFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        _handleBackPress();
+        return false;
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        automaticallyImplyLeading: false, // Remove back button
-        title: Text('Circuit Timer'),
-        centerTitle: true,
-      ),
-      body: Center(
-        child: isRunning || isCompleted 
-            ? _buildTimerUI()
-            : _buildConfigUI(),
+        body: KeyboardListener(
+          focusNode: _keyboardFocusNode,
+          autofocus: true,
+          onKeyEvent: (KeyEvent event) {
+            print("Key event detected: ${event.logicalKey}"); // Debug print
+            if (event is KeyDownEvent) {
+              if (event.logicalKey == LogicalKeyboardKey.escape || event.logicalKey == LogicalKeyboardKey.goBack) {
+                print("ESC or Back button pressed"); // Debug print
+                _handleBackPress();
+              } else if (event.logicalKey == LogicalKeyboardKey.space && isRunning && !isCountdown) {
+                // Add space key to toggle pause/resume
+                _togglePause();
+              }
+            }
+          },
+          child: Center(
+            child: isRunning || isCompleted 
+                ? _buildTimerUI()
+                : _buildConfigUI(),
+          ),
+        ),
       ),
     );
   }
