@@ -28,12 +28,25 @@ class TimerScreenState extends State<TimerScreen> {
   final AudioPlayer _player = AudioPlayer();
   final FocusNode _keyboardFocusNode = FocusNode();
   final FocusNode _pauseButtonFocusNode = FocusNode();
+  late List<FocusNode> _timerButtonFocusNodes;
+  int _currentFocusIndex = 0;
   final Duration _countdownDuration = Duration(seconds: 3);
 
   @override
   void initState() {
     super.initState();
     _ticker = Ticker(_onTick)..start();
+    
+    _timerButtonFocusNodes = List.generate(
+      timerOptions.length,
+      (index) => FocusNode(),
+    );
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _showGrid) {
+        _timerButtonFocusNodes[0].requestFocus();
+      }
+    });
   }
 
   void _onTick(Duration elapsed) {
@@ -153,11 +166,31 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _stop() {
+    print("_stop called");
     setState(() {
       _stopwatch.stop();
       _isRunning = false;
       _isCountdown = false;
+      _isPaused = false;
     });
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    // Debug print to see what keys are being detected
+    print("Key event: ${event.logicalKey} - isCountdown: $_isCountdown, isRunning: $_isRunning");
+    
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape || 
+          event.logicalKey == LogicalKeyboardKey.goBack) {
+        print("ESC detected - handling back press");
+        _handleBackPress();
+      } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning) {
+        // Allow pause even during countdown
+        _togglePause();
+      } else if (_showGrid) {
+        _handleGridKeyNavigation(event);
+      }
+    }
   }
 
   // Handle ESC key and back button press
@@ -165,57 +198,27 @@ class TimerScreenState extends State<TimerScreen> {
     // Stop any playing sound
     _player.stop();
     
-    if (_isRunning) {
-      // If timer is running, stop it and show grid
+    // Debug print to trace function execution
+    print("_handleBackPress called, isCountdown: $_isCountdown, isRunning: $_isRunning");
+    
+    if (_isRunning || _isCountdown) { // Handle both running and countdown states
+      print("Stopping timer and showing grid");
+      // If timer is running or in countdown, stop it and show grid
       setState(() {
         _stop();
         _showGrid = true;
+        _currentFocusIndex = 0; // Reset focus index to first button
+      });
+      
+      // Request focus on the first button after the UI updates
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
+          _timerButtonFocusNodes[0].requestFocus();
+        }
       });
     } else {
       // If on grid view, go back to home screen
       Navigator.of(context).pop();
-    }
-  }
-
-  void _handleKeyEvent(KeyEvent event) {
-    if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.escape || 
-          event.logicalKey == LogicalKeyboardKey.goBack) {
-        _handleBackPress();
-      } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning && !_isCountdown) {
-        _togglePause();
-      }
-    }
-  }
-
-  // Separate sound playing from showing grid
-  Future<void> _playEndSound() async {
-    try {
-      await _player.stop();
-      
-      // Remove any existing listeners to prevent duplicates
-      _player.onPlayerComplete.drain();
-      
-      // Only set up the listener for grid display for end sound, not start sound
-      _player.onPlayerComplete.listen((event) {
-        if (mounted) {
-          // Only show grid on timer completion, not during transitions
-          if (!_isCountdown && !_isRunning) {
-            setState(() {
-              _showGrid = true; // Show grid after sound completes
-            });
-          }
-        }
-      });
-      
-      await _player.play(AssetSource('sounds/end.mp3'));
-    } catch (e) {
-      // If sound fails, still show the grid but only if timer is complete
-      if (mounted && !_isCountdown && !_isRunning) {
-        setState(() {
-          _showGrid = true;
-        });
-      }
     }
   }
 
@@ -253,14 +256,132 @@ class TimerScreenState extends State<TimerScreen> {
     _player.dispose();
     _keyboardFocusNode.dispose();
     _pauseButtonFocusNode.dispose();
+    for (var node in _timerButtonFocusNodes) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  void _handleGridKeyNavigation(KeyEvent event) {
+    final int columns = 4; // Estimated number of columns in the grid
+    final int currentRow = _currentFocusIndex ~/ columns;
+    final int currentCol = _currentFocusIndex % columns;
+    
+    int newIndex = _currentFocusIndex;
+    
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      newIndex = _currentFocusIndex + 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      newIndex = _currentFocusIndex - 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      newIndex = _currentFocusIndex - columns;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      newIndex = _currentFocusIndex + columns;
+    } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+               event.logicalKey == LogicalKeyboardKey.select) {
+      // Start the timer with the currently focused option
+      _start(Duration(seconds: timerOptions[_currentFocusIndex]));
+      return;
+    } else {
+      return; // Not an arrow key or enter/select
+    }
+    
+    // Ensure the new index is within bounds
+    if (newIndex >= 0 && newIndex < timerOptions.length) {
+      setState(() {
+        _currentFocusIndex = newIndex;
+        _timerButtonFocusNodes[newIndex].requestFocus();
+      });
+    }
+  }
+
+  // Separate sound playing from showing grid
+  Future<void> _playEndSound() async {
+    try {
+      await _player.stop();
+      
+      // Remove any existing listeners to prevent duplicates
+      _player.onPlayerComplete.drain();
+      
+      // Only set up the listener for grid display for end sound, not start sound
+      _player.onPlayerComplete.listen((event) {
+        if (mounted) {
+          // Only show grid on timer completion, not during transitions
+          if (!_isCountdown && !_isRunning) {
+            setState(() {
+              _showGrid = true; // Show grid after sound completes
+            });
+          }
+        }
+      });
+      
+      await _player.play(AssetSource('sounds/end.mp3'));
+    } catch (e) {
+      // If sound fails, still show the grid but only if timer is complete
+      if (mounted && !_isCountdown && !_isRunning) {
+        setState(() {
+          _showGrid = true;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return KeyboardListener(
+    return RawKeyboardListener(
       focusNode: _keyboardFocusNode,
-      onKeyEvent: _handleKeyEvent,
+      onKey: (RawKeyEvent event) {
+        // Debug print to see what keys are being detected
+        print("Raw key event: ${event.logicalKey}");
+        
+        if (event is RawKeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.escape || 
+              event.logicalKey == LogicalKeyboardKey.goBack) {
+            print("ESC detected - handling back press");
+            _handleBackPress();
+          } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning) {
+            _togglePause();
+          } else if (_showGrid) {
+            // Handle grid navigation with arrow keys
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              int newIndex = _currentFocusIndex + 1;
+              if (newIndex < timerOptions.length) {
+                setState(() {
+                  _currentFocusIndex = newIndex;
+                  _timerButtonFocusNodes[newIndex].requestFocus();
+                });
+              }
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+              int newIndex = _currentFocusIndex - 1;
+              if (newIndex >= 0) {
+                setState(() {
+                  _currentFocusIndex = newIndex;
+                  _timerButtonFocusNodes[newIndex].requestFocus();
+                });
+              }
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              int newIndex = _currentFocusIndex - 4;
+              if (newIndex >= 0) {
+                setState(() {
+                  _currentFocusIndex = newIndex;
+                  _timerButtonFocusNodes[newIndex].requestFocus();
+                });
+              }
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              int newIndex = _currentFocusIndex + 4;
+              if (newIndex < timerOptions.length) {
+                setState(() {
+                  _currentFocusIndex = newIndex;
+                  _timerButtonFocusNodes[newIndex].requestFocus();
+                });
+              }
+            } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+                       event.logicalKey == LogicalKeyboardKey.select) {
+              _start(Duration(seconds: timerOptions[_currentFocusIndex]));
+            }
+          }
+        }
+      },
       autofocus: true,
       child: WillPopScope(
         onWillPop: () async {
@@ -288,7 +409,7 @@ class TimerScreenState extends State<TimerScreen> {
           runSpacing: 16,
           children: List.generate(
             timerOptions.length,
-            (i) => _buildTimerButton(Duration(seconds: timerOptions[i])),
+            (i) => _buildTimerButton(Duration(seconds: timerOptions[i]), i),
           ),
         ),
       ),
@@ -346,33 +467,48 @@ class TimerScreenState extends State<TimerScreen> {
     );
   }
 
-  Widget _buildTimerButton(Duration duration) {
+  Widget _buildTimerButton(Duration duration, int index) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final buttonHeight = screenHeight * 0.10;
     final buttonWidth = screenWidth * 0.10;
     final fontSize = buttonHeight * 0.3;
 
+    final isFocused = _timerButtonFocusNodes[index].hasFocus;
+
     return GestureDetector(
       onTap: () {
+        setState(() {
+          _currentFocusIndex = index;
+        });
         _start(duration);
       },
-      child: Container(
-        height: buttonHeight,
-        width: buttonWidth,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(52),
-          border: Border.all(
-            color: Colors.transparent,
-            width: 2,
+      child: Focus(
+        focusNode: _timerButtonFocusNodes[index],
+        onFocusChange: (hasFocus) {
+          if (hasFocus) {
+            setState(() {
+              _currentFocusIndex = index;
+            });
+          }
+        },
+        child: Container(
+          height: buttonHeight,
+          width: buttonWidth,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            color: isFocused ? Colors.blue : Colors.grey[800],
+            borderRadius: BorderRadius.circular(52),
+            border: Border.all(
+              color: isFocused ? Colors.white : Colors.transparent,
+              width: isFocused ? 4 : 2,
+            ),
           ),
-        ),
-        child: Center(
-          child: Text(
-            _format(duration),
-            style: TextStyle(fontSize: fontSize, color: Colors.white),
+          child: Center(
+            child: Text(
+              _format(duration),
+              style: TextStyle(fontSize: fontSize, color: Colors.white),
+            ),
           ),
         ),
       ),
