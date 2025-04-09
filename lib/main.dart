@@ -57,6 +57,9 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
   final FocusNode _timerFocusNode = FocusNode();
   final FocusNode _circuitFocusNode = FocusNode();
   int _currentFocusIndex = 0; // 0 = timer, 1 = circuit
+  
+  // Add variable to track back button presses
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
@@ -160,97 +163,111 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {  
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(
-          MediaQuery.of(context).size.height * 0.2,
-        ),
-        child: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          toolbarHeight: MediaQuery.of(context).size.height * 0.2,
-          title: Center(
-            child: Container(
-              height: MediaQuery.of(context).size.height * 0.2 * 0.8,
-              child: Image.asset(
-                'assets/images/logo2.jpeg',
-                fit: BoxFit.contain,
+    return WillPopScope(
+      onWillPop: () async {
+        // Handle double back press to exit
+        if (_lastBackPressTime == null || 
+            DateTime.now().difference(_lastBackPressTime!) > Duration(seconds: 2)) {
+          // If first press or more than 2 seconds since last press
+          _lastBackPressTime = DateTime.now();
+                    
+          return false; // Don't exit yet
+        }
+        
+        return true; // Exit the app on second press within 2 seconds
+      },
+      child: Scaffold(
+        appBar: PreferredSize(
+          preferredSize: Size.fromHeight(
+            MediaQuery.of(context).size.height * 0.2,
+          ),
+          child: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            toolbarHeight: MediaQuery.of(context).size.height * 0.2,
+            title: Center(
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.2 * 0.8,
+                child: Image.asset(
+                  'assets/images/logo2.jpeg',
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
+            centerTitle: true,
           ),
-          centerTitle: true,
         ),
-      ),
-      body: RawKeyboardListener(
-        focusNode: FocusNode(skipTraversal: true),
-        autofocus: true,
-        onKey: _handleKeyEvent,
-        child: Container(
-          child: Column(
-            children: [
-              Expanded(flex: 1, child: Container()),
+        body: RawKeyboardListener(
+          focusNode: FocusNode(skipTraversal: true),
+          autofocus: true,
+          onKey: _handleKeyEvent,
+          child: Container(
+            child: Column(
+              children: [
+                Expanded(flex: 1, child: Container()),
 
-              Expanded(
-                flex: 2,
-                child: Center(
-                  child: Text(
-                    '${_currentTime.hour.toString().padLeft(2, '0')}:${_currentTime.minute.toString().padLeft(2, '0')}:${_currentTime.second.toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      fontSize: MediaQuery.of(context).size.height * 0.25,
-                      fontWeight: FontWeight.bold,
+                Expanded(
+                  flex: 2,
+                  child: Center(
+                    child: Text(
+                      '${_currentTime.hour.toString().padLeft(2, '0')}:${_currentTime.minute.toString().padLeft(2, '0')}:${_currentTime.second.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: MediaQuery.of(context).size.height * 0.25,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
                 ),
-              ),
 
-              Expanded(flex: 1, child: Container()),
+                Expanded(flex: 1, child: Container()),
 
-              Padding(
-                padding: EdgeInsets.only(bottom: 40),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: _navigateToTimer,
-                      child: Focus(
-                        focusNode: _timerFocusNode,
-                        child: Container(
-                          padding: EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            Icons.timer,
-                            size: MediaQuery.of(context).size.height * 0.05,
-                            color: _timerFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                Padding(
+                  padding: EdgeInsets.only(bottom: 40),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _navigateToTimer,
+                        child: Focus(
+                          focusNode: _timerFocusNode,
+                          child: Container(
+                            padding: EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.timer,
+                              size: MediaQuery.of(context).size.height * 0.05,
+                              color: _timerFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(width: 20),
-                    GestureDetector(
-                      onTap: _navigateToCircuit,
-                      child: Focus(
-                        focusNode: _circuitFocusNode,
-                        child: Container(
-                          padding: EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            Icons.loop,
-                            size: MediaQuery.of(context).size.height * 0.05,
-                            color: _circuitFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                      SizedBox(width: 20),
+                      GestureDetector(
+                        onTap: _navigateToCircuit,
+                        child: Focus(
+                          focusNode: _circuitFocusNode,
+                          child: Container(
+                            padding: EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.loop,
+                              size: MediaQuery.of(context).size.height * 0.05,
+                              color: _circuitFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

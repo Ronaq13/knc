@@ -545,7 +545,6 @@ class TimerScreenState extends State<TimerScreen> {
             borderRadius: BorderRadius.circular(52),
             border: Border.all(
               color: isFocused ? Colors.white : Colors.transparent,
-              width: isFocused ? 4 : 2,
             ),
           ),
           child: Center(
