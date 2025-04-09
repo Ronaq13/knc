@@ -786,9 +786,27 @@ class CircuitScreenState extends State<CircuitScreen> {
     if (_currentRowIndex == 0) {
       // Set interval
       setState(() => interval = intervalOptions[_currentColIndex]);
+      
+      // After selecting interval, focus on first break option
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _breakFocusNodes.isNotEmpty) {
+          _currentRowIndex = 1;
+          _currentColIndex = 0;
+          _breakFocusNodes[0].requestFocus();
+        }
+      });
     } else if (_currentRowIndex == 1) {
       // Set break duration
       setState(() => breakDuration = breakOptions[_currentColIndex]);
+      
+      // After selecting break, focus on first round option
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _roundFocusNodes.isNotEmpty) {
+          _currentRowIndex = 2;
+          _currentColIndex = 0;
+          _roundFocusNodes[0].requestFocus();
+        }
+      });
     } else if (_currentRowIndex == 2) {
       // Set rounds and start circuit
       setState(() {
