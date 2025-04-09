@@ -4,22 +4,17 @@ import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class TimerScreen extends StatefulWidget {
-  final GlobalKey<TimerScreenState> timerKey;
-
-  TimerScreen({GlobalKey<TimerScreenState>? key}) 
-      : timerKey = key ?? GlobalKey<TimerScreenState>(),
-        super(key: key ?? GlobalKey<TimerScreenState>());
+  TimerScreen({Key? key}) : super(key: key);
 
   @override
   TimerScreenState createState() => TimerScreenState();
 }
 
 class TimerScreenState extends State<TimerScreen> {
-  // Generate durations from 30 seconds to 5 minutes (10 options, 30s intervals)
-  final List<Duration> durations = List.generate(
-    10,
-    (i) => Duration(seconds: 30 * (i + 1)),
-  );
+  final List<int> timerOptions = [
+    15, 30, 45, 60, 90, 120, 150, 180,
+    210, 240, 270, 300, 600, 1200, 1500, 1800
+  ];
 
   Duration? _selectedDuration;
   Duration _remaining = Duration.zero;
@@ -27,56 +22,59 @@ class TimerScreenState extends State<TimerScreen> {
   late final Ticker _ticker;
   bool _isRunning = false;
   bool _showGrid = true;
-
-  // Flag to ensure the end sound is played only once
+  bool _isCountdown = false;
   bool _playedEndSound = false;
-
-  // Audio player instance
   final AudioPlayer _player = AudioPlayer();
-
-  // We store one FocusNode per timer button.
-  late List<FocusNode> _focusNodes;
-
-  // Method to autofocus the first timer button
-  void autofocusFirstButton() {
-    if (_showGrid && _focusNodes.isNotEmpty) {
-      _focusNodes.first.requestFocus();
-    }
-  }
+  final FocusNode _keyboardFocusNode = FocusNode();
+  final Duration _countdownDuration = Duration(seconds: 3);
 
   @override
   void initState() {
     super.initState();
     _ticker = Ticker(_onTick)..start();
-    _focusNodes = List.generate(durations.length, (_) => FocusNode());
-
-    // Autofocus the first timer button when grid is shown.
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_showGrid && _focusNodes.isNotEmpty) {
-        _focusNodes.first.requestFocus();
-      }
-    });
   }
 
   void _onTick(Duration elapsed) {
     if (_isRunning && _selectedDuration != null) {
-      final timeLeft = _selectedDuration! - _stopwatch.elapsed;
+      final timeLeft = _isCountdown 
+          ? _countdownDuration - _stopwatch.elapsed 
+          : _selectedDuration! - _stopwatch.elapsed;
+          
       if (timeLeft <= Duration.zero) {
-        // Timer has ended.
-        setState(() {
-          _remaining = Duration.zero;
-        });
-        _stop();
-        // In case the end sound wasn't started already.
-        if (!_playedEndSound) {
-          _playEndSoundAndShowGrid();
-          _playedEndSound = true;
+        if (_isCountdown) {
+          // Countdown is complete, start the actual timer
+          _startActualTimer();
+        } else {
+          // Timer is complete
+          setState(() {
+            _remaining = Duration.zero;
+          });
+          _stop();
+          if (!_playedEndSound) {
+            _playEndSound();
+            _playedEndSound = true;
+            // Only show grid when timer completes fully, not during countdown transition
+            Future.delayed(Duration(milliseconds: 500), () {
+              if (mounted) {
+                setState(() {
+                  _showGrid = true;
+                });
+              }
+            });
+          }
         }
       } else {
-        // When timeLeft goes to 3 seconds (and if we haven't played end sound yet)
-        if (!_playedEndSound && timeLeft.inSeconds <= 3) {
-          _playEndSoundAndShowGrid();
+        if (!_isCountdown && !_playedEndSound && timeLeft.inSeconds <= 1) {
+          _playEndSound();
           _playedEndSound = true;
+          // Only show grid when timer completes fully
+          Future.delayed(Duration(milliseconds: 500), () {
+            if (mounted) {
+              setState(() {
+                _showGrid = true;
+              });
+            }
+          });
         }
         setState(() {
           _remaining = timeLeft;
@@ -85,40 +83,95 @@ class TimerScreenState extends State<TimerScreen> {
     }
   }
 
-  void _start(Duration duration) {
+  void _startCountdown(Duration timerDuration) {
+    _playSound('start.mp3');
     setState(() {
-      _selectedDuration = duration;
-      _remaining = duration;
-      _stopwatch
-        ..reset()
-        ..start();
+      _selectedDuration = timerDuration;
+      _remaining = _countdownDuration;
+      _isCountdown = true;
       _isRunning = true;
       _showGrid = false;
-      _playedEndSound = false; // reset flag when starting a new timer
+      _playedEndSound = false;
+      _stopwatch..reset()..start();
     });
+  }
+
+  void _startActualTimer() {
+    setState(() {
+      _isCountdown = false;
+      _isRunning = true;
+      _remaining = _selectedDuration!;
+      _showGrid = false;
+      _playedEndSound = false;
+      _stopwatch..reset()..start();
+    });
+    
+    // Debug log
+    print('Starting actual timer: duration=${_selectedDuration!.inSeconds}s');
+  }
+
+  Future<void> _playSound(String soundFile) async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sounds/$soundFile'));
+    } catch (e) {
+      print('Error playing sound: $e');
+    }
+  }
+
+  void _start(Duration duration) {
+    // Stop any existing timer first
+    if (_isRunning) {
+      _stop();
+    }
+    
+    // Reset state completely before starting new countdown
+    setState(() {
+      _playedEndSound = false;
+      _showGrid = false;
+    });
+    
+    _startCountdown(duration);
   }
 
   void _stop() {
     setState(() {
       _stopwatch.stop();
       _isRunning = false;
+      _isCountdown = false;
     });
   }
 
-  // Plays the end sound (4 sec long) and then, when complete, shows the grid.
-  Future<void> _playEndSoundAndShowGrid() async {
-    try {
-      await _player.play(AssetSource('sounds/end.mp3'));
-      _player.onPlayerComplete.listen((event) {
-        setState(() {
-          _showGrid = true;
-        });
-      });
-    } catch (e) {
-      print('Error playing end sound: $e');
+  // Handle ESC key and back button press
+  void _handleBackPress() {
+    if (_isRunning) {
+      // If timer is running, stop it and show grid
       setState(() {
+        _stop();
         _showGrid = true;
       });
+    } else {
+      // If on grid view, go back to home screen
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape || 
+          event.logicalKey == LogicalKeyboardKey.goBack) {
+        _handleBackPress();
+      }
+    }
+  }
+
+  // Separate sound playing from showing grid
+  Future<void> _playEndSound() async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sounds/end.mp3'));
+    } catch (e) {
+      print('Error playing end sound: $e');
     }
   }
 
@@ -134,143 +187,134 @@ class TimerScreenState extends State<TimerScreen> {
     _ticker.dispose();
     _stopwatch.stop();
     _player.dispose();
-    for (var node in _focusNodes) {
-      node.dispose();
-    }
+    _keyboardFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FocusTraversalGroup(
-      // Using ReadingOrderTraversalPolicy so that the children are traversed in creation order.
-      policy: ReadingOrderTraversalPolicy(),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child:
-              _showGrid
-                  ? _buildTimerGrid()
-                  : _isRunning
-                  ? _buildTimerDisplay()
-                  : const SizedBox.shrink(),
-        ),
-      ),
-    );
-  }
-
-  // Builds the grid of timer buttons.
-  Widget _buildTimerGrid() {
-    return FocusTraversalGroup(
-      policy: WidgetOrderTraversalPolicy(), // Enables arrow key navigation
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: List.generate(
-              durations.length,
-              (i) => _buildTimerButton(durations[i], i, _focusNodes[i]),
+    // Added debug output to identify the state
+    print('Build Timer Screen: showGrid=$_showGrid, isRunning=$_isRunning, isCountdown=$_isCountdown');
+    
+    return KeyboardListener(
+      focusNode: _keyboardFocusNode,
+      onKeyEvent: _handleKeyEvent,
+      autofocus: true,
+      child: WillPopScope(
+        onWillPop: () async {
+          _handleBackPress();
+          return false; // Always handle back press manually
+        },
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            automaticallyImplyLeading: false, // Remove back button
+            title: Text(
+              'Timer',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w100,
+                fontFamily: 'Roboto Condensed',
+              ),
             ),
+            centerTitle: true,
+            toolbarHeight: 80,
+          ),
+          body: Center(
+            child: _showGrid 
+                ? _buildTimerGrid() 
+                : _buildTimerDisplay(),
           ),
         ),
       ),
     );
   }
 
-  // Displays the countdown timer in the center.
-  // Displays the countdown timer in the center with dynamic sizing
+  Widget _buildTimerGrid() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: List.generate(
+            timerOptions.length,
+            (i) => _buildTimerButton(Duration(seconds: timerOptions[i])),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTimerDisplay() {
     final screenHeight = MediaQuery.of(context).size.height;
-    final timerFontSize = screenHeight * 0.25; // 25% of height
+    final timerFontSize = screenHeight * 0.25;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Text(
-          _format(_remaining),
-          style: TextStyle(
-            fontSize: timerFontSize,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            height: 1.0, // Ensures text takes exactly the calculated height
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (_isCountdown)
+            Text(
+              'Starting Soon',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+          SizedBox(height: _isCountdown ? 20 : 0),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Text(
+                _format(_remaining),
+                style: TextStyle(
+                  fontSize: timerFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                  height: 1.0,
+                ),
+                textAlign: TextAlign.center,
+              );
+            },
           ),
-          textAlign: TextAlign.center,
-        );
-      },
+        ],
+      ),
     );
   }
 
-  // Builds an individual timer button.
-  // We pass in the duration, its index, and its associated FocusNode.
-  Widget _buildTimerButton(Duration duration, int index, FocusNode focusNode) {
-    return Focus(
-      focusNode: focusNode,
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        final key = event.logicalKey;
-        int? newIndex;
+  Widget _buildTimerButton(Duration duration) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final buttonHeight = screenHeight * 0.10;
+    final buttonWidth = screenWidth * 0.10;
+    final fontSize = buttonHeight * 0.3;
 
-        // Simplified: Just move linearly across the list with arrow keys
-        if (key == LogicalKeyboardKey.arrowRight) {
-          // Prevent navigation to next screen when on last button
-          if (index + 1 < durations.length) {
-            newIndex = index + 1;
-          } else {
-            return KeyEventResult.handled;
-          }
-        } else if (key == LogicalKeyboardKey.arrowLeft) {
-          // Prevent navigation to previous screen when on first button
-          if (index - 1 >= 0) {
-            newIndex = index - 1;
-          } else {
-            return KeyEventResult.handled;
-          }
-        } else if (key == LogicalKeyboardKey.enter ||
-            key == LogicalKeyboardKey.select) {
-          _start(duration);
-          return KeyEventResult.handled;
-        }
-
-        if (newIndex != null) {
-          _focusNodes[newIndex].requestFocus();
-          return KeyEventResult.handled;
-        }
-
-        return KeyEventResult.ignored;
+    return GestureDetector(
+      onTap: () {
+        _start(duration);
       },
-      child: Builder(
-        builder: (context) {
-          final isFocused = Focus.of(context).hasFocus;
-          final screenHeight = MediaQuery.of(context).size.height;
-          final screenWidth = MediaQuery.of(context).size.width;
-          final buttonHeight = screenHeight * 0.10;
-          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
-          final fontSize = buttonHeight * 0.3; // 30% of height
-
-          return GestureDetector(
-            onTap: () => _start(duration),
-            child: Container(
-              height: buttonHeight,
-              width: buttonWidth,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(
-                color: isFocused ? Colors.blue : Colors.grey[800],
-                borderRadius: BorderRadius.circular(52),
-                border: Border.all(
-                  color: isFocused ? Colors.white : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  _format(duration),
-                  style: TextStyle(fontSize: fontSize, color: Colors.white),
-                ),
-              ),
-            ),
-          );
-        },
+      child: Container(
+        height: buttonHeight,
+        width: buttonWidth,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[800],
+          borderRadius: BorderRadius.circular(52),
+          border: Border.all(
+            color: Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            _format(duration),
+            style: TextStyle(fontSize: fontSize, color: Colors.white),
+          ),
+        ),
       ),
     );
   }

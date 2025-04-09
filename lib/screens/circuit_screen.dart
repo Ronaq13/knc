@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class CircuitScreen extends StatefulWidget {
@@ -31,10 +31,6 @@ class CircuitScreenState extends State<CircuitScreen> {
   // Public getters for external access
   bool get isCircuitRunning => isRunning;
   bool get isCircuitCompleted => isCompleted;
-
-  // Focus nodes for control buttons
-  final FocusNode _pauseFocusNode = FocusNode();
-  final FocusNode _resetFocusNode = FocusNode();
 
   // Time when pause was pressed
   Duration? _pausedRemaining;
@@ -67,21 +63,10 @@ class CircuitScreenState extends State<CircuitScreen> {
   final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20, 25];
   int? _lastBeepSecond;
 
-  late List<List<FocusNode>> _focusNodes;
-
   @override
   void initState() {
     super.initState();
     _ticker = Ticker(_onTick)..start();
-    _focusNodes = [
-      List.generate(intervalOptions.length, (_) => FocusNode()),
-      List.generate(breakOptions.length, (_) => FocusNode()),
-      List.generate(roundOptions.length, (_) => FocusNode()),
-    ];
-    
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      _focusNodes[0][0].requestFocus();
-    });
   }
 
   void _onTick(Duration elapsed) {
@@ -95,20 +80,14 @@ class CircuitScreenState extends State<CircuitScreen> {
         ..reset();
       _lastBeepSecond = null;
       if (isCountdown) {
-        // print("_onTick: Countdown finished, starting interval");
         isCountdown = false;
         _startInterval();
       } else if (isBreak) {
-        // print("_onTick: Break finished, starting interval. Current round: $currentRound");
         _startInterval();
       } else {
-        // Check if we've completed all rounds
-        // print("_onTick: Interval finished, checking if all rounds completed. Current round: $currentRound, Total rounds: ${rounds ?? 0}");
         if (currentRound >= (rounds ?? 0)) {
-          // print("_onTick: All rounds completed, completing workout");
           _completeWorkout();
         } else {
-          // print("_onTick: Starting break for round $currentRound");
           _startBreak();
         }
       }
@@ -133,7 +112,6 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startCountdown() {
-    // print("_startCountdown: Starting countdown, currentRound = $currentRound");
     setState(() {
       isBreak = false;
       isCountdown = true;
@@ -156,7 +134,6 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startInterval() {
-    // print("_startInterval: Before increment, currentRound = $currentRound");
     _playSound('start.mp3');
     setState(() {
       isBreak = false;
@@ -165,25 +142,14 @@ class CircuitScreenState extends State<CircuitScreen> {
       remaining = interval!;
       
       // Only increment if we're not in the countdown phase
-      // This ensures we don't increment twice when starting the circuit
       if (!isCountdown) {
         currentRound++;
-        // print("_startInterval: After increment, currentRound = $currentRound");
-      } else {
-        // print("_startInterval: Skipping increment because isCountdown is true");
       }
       
       _lastBeepSecond = null;
       stopwatch
         ..reset()
         ..start();
-    });
-    
-    // Ensure the pause button remains focused
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!_pauseFocusNode.hasFocus) {
-        _pauseFocusNode.requestFocus();
-      }
     });
   }
 
@@ -206,17 +172,9 @@ class CircuitScreenState extends State<CircuitScreen> {
         ..reset()
         ..start();
     });
-    
-    // Ensure the pause button remains focused
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!_pauseFocusNode.hasFocus) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
   }
 
   void _startCircuit() {
-    // print("_startCircuit: Setting currentRound to 0");
     setState(() {
       isRunning = true;
       isCompleted = false;
@@ -228,20 +186,6 @@ class CircuitScreenState extends State<CircuitScreen> {
     
     // Start with countdown instead of interval
     _startCountdown();
-    
-    // Set focus to pause button when circuit starts
-    // Only if no button is currently focused and we're not transitioning from a button
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      // Check if the focus is currently on the bottom navigation bar
-      // If it is, don't request focus on the Pause button
-      final currentFocus = FocusManager.instance.primaryFocus;
-      final isBottomNavFocused = currentFocus != null && 
-          (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
-      
-      if (!_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
   }
 
   void _togglePause() {
@@ -262,13 +206,6 @@ class CircuitScreenState extends State<CircuitScreen> {
         }
       }
     });
-    
-    // Ensure the pause/resume button remains focused
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!_pauseFocusNode.hasFocus) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
   }
 
   void _completeWorkout() {
@@ -282,7 +219,6 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _resetState() {
-    // print("_resetState: Resetting currentRound to 0");
     _audioPlayer.stop();
     setState(() {
       isRunning = false;
@@ -305,101 +241,32 @@ class CircuitScreenState extends State<CircuitScreen> {
     T value,
     T? selected,
     void Function(T) onTap,
-    FocusNode focusNode,
     int rowIndex,
     int colIndex,
   ) {
-    return Focus(
-      focusNode: focusNode,
-      onKey: (FocusNode node, RawKeyEvent event) {
-        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final buttonHeight = screenHeight * 0.10;
+    final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+    final fontSize = buttonHeight * 0.3; // 30% of height
 
-        // Handle arrow key navigation
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
-            event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-            event.logicalKey == LogicalKeyboardKey.arrowDown ||
-            event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          int newRow = rowIndex;
-          int newCol = colIndex;
-
-          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            // If we're on the rightmost button, prevent navigation
-            if (colIndex >= _focusNodes[rowIndex].length - 1) {
-              return KeyEventResult.handled;
-            }
-            newCol++;
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-            // If we're on the leftmost button, prevent navigation
-            if (colIndex <= 0) {
-              return KeyEventResult.handled;
-            }
-            newCol--;
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-            // If we're on the last available row, let the event propagate to the parent
-            // to focus on the bottom navigation bar
-            if (rowIndex >= _getLastAvailableRowIndex()) {
-              return KeyEventResult.ignored;
-            }
-            newRow++;
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-            newRow--;
-          }
-
-          if (newRow >= 0 && newRow < _focusNodes.length) {
-            if (newCol >= 0 && newCol < _focusNodes[newRow].length) {
-              _focusNodes[newRow][newCol].requestFocus();
-              return KeyEventResult.handled;
-            }
-          }
-          return KeyEventResult.ignored;
-        }
-        // Handle selection with Enter/OK key
-        else if (event.logicalKey == LogicalKeyboardKey.enter ||
-            event.logicalKey == LogicalKeyboardKey.select ||
-            event.logicalKey == LogicalKeyboardKey.numpadEnter ||
-            event.logicalKey == LogicalKeyboardKey.gameButtonSelect) {
-          onTap(value);
-          return KeyEventResult.handled;
-        }
-
-        return KeyEventResult.ignored;
-      },
-      child: Builder(
-        builder: (context) {
-          final isFocused = Focus.of(context).hasFocus;
-          final screenHeight = MediaQuery.of(context).size.height;
-          final screenWidth = MediaQuery.of(context).size.width;
-          final buttonHeight = screenHeight * 0.10;
-          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
-          final fontSize = buttonHeight * 0.3; // 30% of height
-
-          return GestureDetector(
-            onTap: () => onTap(value),
-            child: Container(
-              height: buttonHeight,
-              width: buttonWidth,
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              margin: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color:
-                    selected == value
-                        ? Colors.amber
-                        : (isFocused ? Colors.blue : Colors.grey[800]),
-                borderRadius: BorderRadius.circular(52),
-                border: Border.all(
-                  color: isFocused ? Colors.white : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  value is Duration ? _format(value) : value.toString(),
-                  style: TextStyle(fontSize: fontSize, color: Colors.white),
-                ),
-              ),
-            ),
-          );
-        },
+    return GestureDetector(
+      onTap: () => onTap(value),
+      child: Container(
+        height: buttonHeight,
+        width: buttonWidth,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: selected == value ? Colors.amber : Colors.grey[800],
+          borderRadius: BorderRadius.circular(52),
+        ),
+        child: Center(
+          child: Text(
+            value is Duration ? _format(value) : value.toString(),
+            style: TextStyle(fontSize: fontSize, color: Colors.white),
+          ),
+        ),
       ),
     );
   }
@@ -418,207 +285,78 @@ class CircuitScreenState extends State<CircuitScreen> {
   Widget buildTVButton({
     required String label,
     required VoidCallback onPressed,
-    required FocusNode focusNode,
-    bool isLeftmost = false,
-    bool isRightmost = false,
   }) {
-    return Focus(
-      focusNode: focusNode,
-      onKey: (FocusNode node, RawKeyEvent event) {
-        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-
-        // Handle left-right navigation
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          // If we're on the rightmost button, prevent navigation
-          if (isRightmost) {
-            return KeyEventResult.handled;
-          }
-          // Directly request focus on the next button
-          if (label == 'Pause' || label == 'Resume') {
-            _resetFocusNode.requestFocus();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          // If we're on the leftmost button, prevent navigation
-          if (isLeftmost) {
-            return KeyEventResult.handled;
-          }
-          // Directly request focus on the previous button
-          if (label == 'Reset') {
-            _pauseFocusNode.requestFocus();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        } 
-        // Handle down arrow key to move focus to bottom navigation
-        else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          // Let the event propagate to the parent to focus on the bottom navigation bar
-          // This will prevent the focus from returning to the Pause button
-          return KeyEventResult.ignored;
-        }
-        // Handle Enter/OK key press
-        else if (event.logicalKey == LogicalKeyboardKey.enter ||
-            event.logicalKey == LogicalKeyboardKey.select ||
-            event.logicalKey == LogicalKeyboardKey.numpadEnter ||
-            event.logicalKey == LogicalKeyboardKey.gameButtonSelect) {
-          onPressed();
-          return KeyEventResult.handled;
-        }
-
-        return KeyEventResult.ignored;
-      },
-      child: Builder(
-        builder: (context) {
-          final isFocused = Focus.of(context).hasFocus;
-          final screenHeight = MediaQuery.of(context).size.height;
-          final screenWidth = MediaQuery.of(context).size.width;
-          final buttonHeight = screenHeight * 0.10;
-          final minButtonWidth = screenWidth * 0.10; // Minimum width of 10% screen width
-          final fontSize = buttonHeight * 0.3; // 30% of height
-
-          return GestureDetector(
-            onTap: onPressed,
-            child: Container(
-              height: buttonHeight,
-              constraints: BoxConstraints(
-                minWidth: minButtonWidth,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: isFocused ? Colors.blue : Colors.grey[800],
-                borderRadius: BorderRadius.circular(52),
-                border: Border.all(
-                  color: isFocused ? Colors.white : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(fontSize: fontSize, color: Colors.white),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSelection<T>(
-    String label,
-    List<T> options,
-    T? selected,
-    void Function(T) onTap,
-    int rowIndex,
-  ) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final labelHeight = screenHeight * 0.04;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final buttonHeight = screenHeight * 0.10;
+    final minButtonWidth = screenWidth * 0.10; // Adjust width as needed
+    final fontSize = buttonHeight * 0.3; // 30% of height
 
-    // Add debug print for rounds selection
-    // if (label == 'Rounds') {
-    //   print("_buildSelection: Building rounds selection, currentRound = $currentRound");
-    // }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: labelHeight, color: Colors.black),
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        height: buttonHeight,
+        constraints: BoxConstraints(
+          minWidth: minButtonWidth,
         ),
-        Wrap(
-          children: List.generate(
-            options.length,
-            (i) => _buildOptionButton<T>(
-              options[i],
-              selected,
-              onTap,
-              _focusNodes[rowIndex][i],
-              rowIndex,
-              i,
-            ),
+        padding: EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+        margin: EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey[800],
+          borderRadius: BorderRadius.circular(52),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: fontSize, color: Colors.white),
           ),
         ),
-        // const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  Widget _buildControls() {
-    return FocusTraversalGroup(
-      policy: ReadingOrderTraversalPolicy(),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          buildTVButton(
-            label: isPaused ? 'Resume' : 'Pause',
-            onPressed: _togglePause,
-            focusNode: _pauseFocusNode,
-            isLeftmost: true,
-          ),
-          buildTVButton(
-            label: 'Reset',
-            onPressed: _resetState,
-            focusNode: _resetFocusNode,
-            isRightmost: true,
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildTimerUI() {
-    String title;
-    if (isCompleted) {
-      title = "Workout complete!";
-    } else if (isBreak) {
-      title = "Break time. Round $currentRound completed";
-    } else {
-      title = "Round $currentRound / $rounds";
-    }
-    
-    // print("_buildTimerUI: Displaying title: $title, currentRound = $currentRound");
-
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25; // 25% of height
-    final titleFontSize = screenHeight * 0.05;
 
-    // Only request focus if no button is currently focused and we're not transitioning from a button
-    // This prevents the focus from returning to the Pause button when the down arrow key is pressed
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      // Check if the focus is currently on the bottom navigation bar
-      // If it is, don't request focus on the Pause button
-      final currentFocus = FocusManager.instance.primaryFocus;
-      final isBottomNavFocused = currentFocus != null && 
-          (currentFocus != _pauseFocusNode && currentFocus != _resetFocusNode);
-      
-      if (!isCompleted && !_pauseFocusNode.hasFocus && !_resetFocusNode.hasFocus && !isBottomNavFocused) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
-
-    return Container(
-      // Ensure no focus border appears on this container
-      decoration: BoxDecoration(
-        border: null,
-      ),
+    return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            title,
-            style: TextStyle(fontSize: titleFontSize, color: Colors.black),
-          ),
-          const SizedBox(height: 16),
-          Text(
             _format(remaining),
-            style: TextStyle(fontSize: timerFontSize, color: Colors.black),
+            style: TextStyle(
+              fontSize: timerFontSize,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+              height: 1.0,
+            ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 32),
-          if (!isCompleted) _buildControls(),
+          const SizedBox(height: 20),
+          Text(
+            'Round $currentRound of ${rounds ?? 0}',
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              buildTVButton(
+                onPressed: _togglePause,
+                label: isPaused ? 'Resume' : 'Pause',
+              ),
+              const SizedBox(width: 20),
+              buildTVButton(
+                onPressed: _resetState,
+                label: 'Reset',
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -626,7 +364,6 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   Widget _buildConfigUI() {
     return Container(
-      // Ensure no focus border appears on this container
       decoration: BoxDecoration(
         border: null,
       ),
@@ -635,24 +372,10 @@ class CircuitScreenState extends State<CircuitScreen> {
         children: [
           _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
             setState(() => interval = val);
-
-            if (breakDuration == null) {
-              Future.delayed(const Duration(milliseconds: 100), () {
-                _focusNodes[1][0].requestFocus(); // Focus Break row
-              });
-            }
           }, 0),
           if (interval != null)
-            _buildSelection<Duration>('Break', breakOptions, breakDuration, (
-              val,
-            ) {
+            _buildSelection<Duration>('Break', breakOptions, breakDuration, (val) {
               setState(() => breakDuration = val);
-
-              if (rounds == null) {
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  _focusNodes[2][0].requestFocus(); // Focus Round row
-                });
-              }
             }, 1),
           if (interval != null && breakDuration != null)
             _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
@@ -666,18 +389,50 @@ class CircuitScreenState extends State<CircuitScreen> {
     );
   }
 
+  Widget _buildSelection<T>(
+    String title,
+    List<T> options,
+    T? selected,
+    void Function(T) onSelect,
+    int rowIndex,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: options.map((option) {
+              return _buildOptionButton(
+                option,
+                selected,
+                onSelect,
+                rowIndex,
+                options.indexOf(option),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _ticker.dispose();
     stopwatch.stop();
     _audioPlayer.dispose();
-    _pauseFocusNode.dispose();
-    _resetFocusNode.dispose();
-    for (var list in _focusNodes) {
-      for (var node in list) {
-        node.dispose();
-      }
-    }
     super.dispose();
   }
 
@@ -685,92 +440,19 @@ class CircuitScreenState extends State<CircuitScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        automaticallyImplyLeading: false, // Remove back button
+        title: Text('Circuit Timer'),
+        centerTitle: true,
+      ),
       body: Center(
         child: isRunning || isCompleted 
-            ? Focus(
-                // Use a non-traversable focus node to prevent body focus
-                focusNode: FocusNode(skipTraversal: true, canRequestFocus: false),
-                onKey: (FocusNode node, RawKeyEvent event) {
-                  // Handle up arrow key to focus on the Pause button
-                  if (event is RawKeyDownEvent && 
-                      event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    // Only focus on the Pause button if the circuit is running
-                    if (isRunning && !isCompleted) {
-                      // Use a slight delay to ensure it works
-                      Future.delayed(Duration(milliseconds: 10), () {
-                        _pauseFocusNode.requestFocus();
-                      });
-                      return KeyEventResult.handled;
-                    }
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: Container(
-                  // Ensure no focus border appears on this container
-                  decoration: BoxDecoration(
-                    border: null,
-                  ),
-                  child: _buildTimerUI(),
-                ),
-              )
+            ? _buildTimerUI()
             : _buildConfigUI(),
       ),
     );
   }
-
-  // Method to directly focus the pause button
-  void focusPauseButton() {
-    if (!isRunning || isCompleted) return;
-    
-    // Request focus multiple times with increasing delays to ensure it gets applied
-    _pauseFocusNode.requestFocus();
-    
-    // Try again with a slight delay
-    Future.delayed(Duration(milliseconds: 10), () {
-      if (!_pauseFocusNode.hasFocus) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
-    
-    // And once more with a longer delay
-    Future.delayed(Duration(milliseconds: 50), () {
-      if (!_pauseFocusNode.hasFocus) {
-        _pauseFocusNode.requestFocus();
-      }
-    });
-  }
-
-  // Method to autofocus the first interval button or Pause button
-  void autofocusFirstButton() {
-    // If circuit is running, directly focus on the Pause button
-    if (isRunning && !isCompleted) {
-      // Use a slight delay to ensure UI is ready
-      Future.delayed(Duration(milliseconds: 10), () {
-        _pauseFocusNode.requestFocus();
-      });
-      return;
-    }
-    
-    // Otherwise, if configuring, focus on appropriate config button
-    if (!isRunning && !isCompleted && _focusNodes.isNotEmpty) {
-      // Find the first available row
-      int firstAvailableRow = 0;
-      if (interval != null) {
-        firstAvailableRow = 1;
-        if (breakDuration != null) {
-          firstAvailableRow = 2;
-        }
-      }
-      
-      // Focus on the first button in the first available row
-      if (_focusNodes[firstAvailableRow].isNotEmpty) {
-        _focusNodes[firstAvailableRow][0].requestFocus();
-      }
-    }
-  }
-}
-
-// Extension to access the CircuitScreen state
-extension CircuitScreenExtension on BuildContext {
-  CircuitScreenState? get circuitScreenState => findAncestorStateOfType<CircuitScreenState>();
 }
