@@ -69,10 +69,46 @@ class CircuitScreenState extends State<CircuitScreen> {
   final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20];
   int? _lastBeepSecond;
 
+  // Focus nodes for option buttons
+  late List<FocusNode> _intervalFocusNodes;
+  late List<FocusNode> _breakFocusNodes;
+  late List<FocusNode> _roundFocusNodes;
+  late FocusNode _pauseButtonFocusNode;
+  
+  // Track which type of option is currently focused (0=interval, 1=break, 2=rounds)
+  int _currentRowIndex = 0;
+  // Track which option in the current row is focused
+  int _currentColIndex = 0;
+
   @override
   void initState() {
     super.initState();
     _ticker = Ticker(_onTick)..start();
+    
+    // Initialize focus nodes for all options
+    _intervalFocusNodes = List.generate(
+      intervalOptions.length,
+      (index) => FocusNode(),
+    );
+    
+    _breakFocusNodes = List.generate(
+      breakOptions.length,
+      (index) => FocusNode(),
+    );
+    
+    _roundFocusNodes = List.generate(
+      roundOptions.length,
+      (index) => FocusNode(),
+    );
+    
+    _pauseButtonFocusNode = FocusNode();
+    
+    // Set initial focus to the first interval option when the screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !isRunning) {
+        _intervalFocusNodes[0].requestFocus();
+      }
+    });
   }
 
   void _onTick(Duration elapsed) {
@@ -221,6 +257,8 @@ class CircuitScreenState extends State<CircuitScreen> {
         // Store the remaining time when paused
         _pausedRemaining = remaining;
         stopwatch.stop();
+        // Pause audio playback
+        _audioPlayer.pause();
       } else {
         // Adjust the total phase duration to account for pause time
         if (_pausedRemaining != null) {
@@ -229,7 +267,16 @@ class CircuitScreenState extends State<CircuitScreen> {
           stopwatch.reset();
           stopwatch.start();
           _pausedRemaining = null;
+          // Resume audio playback if it was paused
+          _audioPlayer.resume();
         }
+      }
+    });
+    
+    // Focus the pause button after toggling
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_pauseButtonFocusNode.hasFocus) {
+        _pauseButtonFocusNode.requestFocus();
       }
     });
   }
@@ -241,10 +288,10 @@ class CircuitScreenState extends State<CircuitScreen> {
       isRunning = false;
       isPaused = false;
       stopwatch.stop();
-      
-      // Move back to configuration UI after completing the workout
-      _resetState();
     });
+    
+    // Return to home screen after workout is complete
+    Navigator.of(context).pop();
   }
 
   void _resetState() {
@@ -258,12 +305,14 @@ class CircuitScreenState extends State<CircuitScreen> {
       isCountdown = false;
       stopwatch.stop();
       _pausedRemaining = null;
+      _currentRowIndex = 0;
+      _currentColIndex = 0;
     });
     
     // Ensure keyboard focus is maintained when resetting
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_keyboardFocusNode != null && !_keyboardFocusNode.hasFocus) {
-        _keyboardFocusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _intervalFocusNodes.isNotEmpty) {
+        _intervalFocusNodes[0].requestFocus();
       }
     });
   }
@@ -286,21 +335,55 @@ class CircuitScreenState extends State<CircuitScreen> {
     final buttonWidth = screenWidth * 0.10; // Adjust width as needed
     final fontSize = buttonHeight * 0.3; // 30% of height
 
+    // Determine if this button should be focused
+    FocusNode? focusNode;
+    bool isFocused = false;
+    
+    if (rowIndex == 0) {
+      focusNode = _intervalFocusNodes[colIndex];
+      isFocused = focusNode.hasFocus;
+    } else if (rowIndex == 1) {
+      focusNode = _breakFocusNodes[colIndex];
+      isFocused = focusNode.hasFocus;
+    } else if (rowIndex == 2) {
+      focusNode = _roundFocusNodes[colIndex];
+      isFocused = focusNode.hasFocus;
+    }
+
     return GestureDetector(
       onTap: () => onTap(value),
-      child: Container(
-        height: buttonHeight,
-        width: buttonWidth,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-        margin: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: selected == value ? Colors.amber : Colors.grey[800],
-          borderRadius: BorderRadius.circular(52),
-        ),
-        child: Center(
-          child: Text(
-            value is Duration ? _format(value) : value.toString(),
-            style: TextStyle(fontSize: fontSize, color: Colors.white),
+      child: Focus(
+        focusNode: focusNode,
+        onFocusChange: (hasFocus) {
+          if (hasFocus) {
+            setState(() {
+              _currentRowIndex = rowIndex;
+              _currentColIndex = colIndex;
+            });
+          }
+        },
+        child: Container(
+          height: buttonHeight,
+          width: buttonWidth,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          margin: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: isFocused 
+                  ? Colors.blue 
+                  : selected == value 
+                      ? Colors.amber 
+                      : Colors.grey[800],
+            borderRadius: BorderRadius.circular(52),
+            border: Border.all(
+              color: isFocused ? Colors.white : Colors.transparent,
+              width: isFocused ? 4 : 2,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              value is Duration ? _format(value) : value.toString(),
+              style: TextStyle(fontSize: fontSize, color: Colors.white),
+            ),
           ),
         ),
       ),
@@ -355,21 +438,33 @@ class CircuitScreenState extends State<CircuitScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25; // 25% of height
 
+    // Focus pause button when timer UI is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !isCountdown && _pauseButtonFocusNode != null) {
+        _pauseButtonFocusNode.requestFocus();
+      }
+    });
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            isCountdown 
-              ? 'Starting Soon' 
-              : isBreak 
-                ? 'Break' 
-                : 'Round $currentRound / ${rounds ?? 0}',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+          // Fixed height container for the text to prevent layout shifts
+          Container(
+            height: 40, // Fixed height for title area
+            alignment: Alignment.center,
+            child: Text(
+              isCountdown 
+                ? 'Starting Soon' 
+                : isBreak 
+                  ? 'Break' 
+                  : 'Round $currentRound / ${rounds ?? 0}',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
           Text(
@@ -382,30 +477,39 @@ class CircuitScreenState extends State<CircuitScreen> {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (!isCountdown)
-              GestureDetector(
-                onTap: _togglePause,
-                child: Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Colors.transparent,
-                      width: 2,
+          // Constant spacing between timer and button area
+          SizedBox(height: screenHeight * 0.15),
+          // Fixed height area for button to prevent layout shifts
+          Container(
+            height: 72, // Space for the button
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (!isCountdown)
+                GestureDetector(
+                  onTap: _togglePause,
+                  child: Focus(
+                    focusNode: _pauseButtonFocusNode,
+                    child: Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        border: Border.all(
+                          color: Colors.transparent,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        isPaused ? Icons.play_arrow : Icons.pause,
+                        color: _pauseButtonFocusNode.hasFocus ? Colors.blue : Colors.black,
+                        size: 40,
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    isPaused ? Icons.play_arrow : Icons.pause,
-                    color: Colors.black,
-                    size: 40,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -498,6 +602,19 @@ class CircuitScreenState extends State<CircuitScreen> {
     stopwatch.stop();
     _audioPlayer.dispose();
     _keyboardFocusNode.dispose();
+    _pauseButtonFocusNode.dispose();
+    
+    // Dispose all option focus nodes
+    for (var node in _intervalFocusNodes) {
+      node.dispose();
+    }
+    for (var node in _breakFocusNodes) {
+      node.dispose();
+    }
+    for (var node in _roundFocusNodes) {
+      node.dispose();
+    }
+    
     super.dispose();
   }
 
@@ -510,18 +627,31 @@ class CircuitScreenState extends State<CircuitScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: KeyboardListener(
+        body: RawKeyboardListener(
           focusNode: _keyboardFocusNode,
           autofocus: true,
-          onKeyEvent: (KeyEvent event) {
-            print("Key event detected: ${event.logicalKey}"); // Debug print
-            if (event is KeyDownEvent) {
-              if (event.logicalKey == LogicalKeyboardKey.escape || event.logicalKey == LogicalKeyboardKey.goBack) {
-                print("ESC or Back button pressed"); // Debug print
+          onKey: (RawKeyEvent event) {
+            if (event is RawKeyDownEvent) {
+              // Handle ESC/Back button for all states
+              if (event.logicalKey == LogicalKeyboardKey.escape || 
+                  event.logicalKey == LogicalKeyboardKey.goBack) {
                 _handleBackPress();
-              } else if (event.logicalKey == LogicalKeyboardKey.space && isRunning && !isCountdown) {
-                // Add space key to toggle pause/resume
-                _togglePause();
+              }
+              // For running circuit
+              else if (isRunning) {
+                if (event.logicalKey == LogicalKeyboardKey.space) {
+                  _togglePause();
+                } 
+                // Handle Enter/Select/OK for pause button when focused
+                else if ((event.logicalKey == LogicalKeyboardKey.enter || 
+                         event.logicalKey == LogicalKeyboardKey.select) && 
+                         !isCountdown && _pauseButtonFocusNode.hasFocus) {
+                  _togglePause();
+                }
+              }
+              // For config UI
+              else if (!isRunning) {
+                _handleConfigKeyNavigation(event);
               }
             }
           },
@@ -533,5 +663,116 @@ class CircuitScreenState extends State<CircuitScreen> {
         ),
       ),
     );
+  }
+  
+  // Handle keyboard navigation in the configuration UI
+  void _handleConfigKeyNavigation(RawKeyEvent event) {
+    // Handle navigation keys
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _moveFocusRight();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _moveFocusLeft();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _moveFocusUp();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _moveFocusDown();
+    } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+               event.logicalKey == LogicalKeyboardKey.select) {
+      _activateFocusedOption();
+    }
+  }
+
+  // Move focus right within the current row
+  void _moveFocusRight() {
+    int maxIndex = 0;
+    if (_currentRowIndex == 0) {
+      maxIndex = intervalOptions.length - 1;
+    } else if (_currentRowIndex == 1) {
+      maxIndex = breakOptions.length - 1;
+    } else if (_currentRowIndex == 2) {
+      maxIndex = roundOptions.length - 1;
+    }
+    
+    if (_currentColIndex < maxIndex) {
+      setState(() {
+        _currentColIndex++;
+        _requestFocusForCurrentOption();
+      });
+    }
+  }
+  
+  // Move focus left within the current row
+  void _moveFocusLeft() {
+    if (_currentColIndex > 0) {
+      setState(() {
+        _currentColIndex--;
+        _requestFocusForCurrentOption();
+      });
+    }
+  }
+  
+  // Move focus up to the previous row if available
+  void _moveFocusUp() {
+    if (_currentRowIndex > 0) {
+      setState(() {
+        _currentRowIndex--;
+        // Ensure column index is valid for the new row
+        _currentColIndex = _currentColIndex.clamp(0, _getMaxColIndexForRow(_currentRowIndex));
+        _requestFocusForCurrentOption();
+      });
+    }
+  }
+  
+  // Move focus down to the next row if available
+  void _moveFocusDown() {
+    int lastAvailableRow = _getLastAvailableRowIndex();
+    if (_currentRowIndex < lastAvailableRow) {
+      setState(() {
+        _currentRowIndex++;
+        // Ensure column index is valid for the new row
+        _currentColIndex = _currentColIndex.clamp(0, _getMaxColIndexForRow(_currentRowIndex));
+        _requestFocusForCurrentOption();
+      });
+    }
+  }
+  
+  // Helper to get the maximum column index for a given row
+  int _getMaxColIndexForRow(int rowIndex) {
+    if (rowIndex == 0) {
+      return intervalOptions.length - 1;
+    } else if (rowIndex == 1) {
+      return breakOptions.length - 1;
+    } else if (rowIndex == 2) {
+      return roundOptions.length - 1;
+    }
+    return 0;
+  }
+  
+  // Request focus for the current option based on row and column indices
+  void _requestFocusForCurrentOption() {
+    if (_currentRowIndex == 0 && _currentColIndex < intervalOptions.length) {
+      _intervalFocusNodes[_currentColIndex].requestFocus();
+    } else if (_currentRowIndex == 1 && _currentColIndex < breakOptions.length) {
+      _breakFocusNodes[_currentColIndex].requestFocus();
+    } else if (_currentRowIndex == 2 && _currentColIndex < roundOptions.length) {
+      _roundFocusNodes[_currentColIndex].requestFocus();
+    }
+  }
+  
+  // Activate the currently focused option
+  void _activateFocusedOption() {
+    if (_currentRowIndex == 0) {
+      // Set interval
+      setState(() => interval = intervalOptions[_currentColIndex]);
+    } else if (_currentRowIndex == 1) {
+      // Set break duration
+      setState(() => breakDuration = breakOptions[_currentColIndex]);
+    } else if (_currentRowIndex == 2) {
+      // Set rounds and start circuit
+      setState(() {
+        rounds = roundOptions[_currentColIndex];
+        _startCircuit();
+      });
+    }
   }
 }
