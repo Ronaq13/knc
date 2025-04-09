@@ -51,9 +51,12 @@ class KncHome extends StatefulWidget {
   State<KncHome> createState() => _KncHomeState();
 }
 
-class _KncHomeState extends State<KncHome> {
+class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
   Timer? _clockTimer;
   DateTime _currentTime = DateTime.now();
+  final FocusNode _timerFocusNode = FocusNode();
+  final FocusNode _circuitFocusNode = FocusNode();
+  int _currentFocusIndex = 0; // 0 = timer, 1 = circuit
 
   @override
   void initState() {
@@ -64,24 +67,95 @@ class _KncHomeState extends State<KncHome> {
         _currentTime = DateTime.now();
       });
     });
+    
+    // Set initial focus on the timer icon
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _timerFocusNode.requestFocus();
+    });
+    
+    // Register for didChangeAppLifecycleState callback
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _timerFocusNode.dispose();
+    _circuitFocusNode.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Restore focus to last used icon when dependencies change
+    _restoreLastFocus();
+  }
+  
+  // Focus on timer icon when returning to this screen
+  void _restoreLastFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          // Restore focus to the last clicked icon
+          if (_currentFocusIndex == 0) {
+            _timerFocusNode.requestFocus();
+          } else {
+            _circuitFocusNode.requestFocus();
+          }
+        });
+      }
+    });
+  }
+
+  // Handle keyboard navigation
+  void _handleKeyEvent(RawKeyEvent event) {
+    if (event is RawKeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        // Move focus to timer icon
+        setState(() {
+          _currentFocusIndex = 0;
+          _timerFocusNode.requestFocus();
+        });
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        // Move focus to circuit icon
+        setState(() {
+          _currentFocusIndex = 1;
+          _circuitFocusNode.requestFocus();
+        });
+      } else if (event.logicalKey == LogicalKeyboardKey.enter || 
+                 event.logicalKey == LogicalKeyboardKey.select) {
+        // Activate the current focused item
+        if (_currentFocusIndex == 0) {
+          _navigateToTimer();
+        } else {
+          _navigateToCircuit();
+        }
+      }
+    }
   }
 
   void _navigateToTimer() {
+    // Set focus index before navigation
+    _currentFocusIndex = 0;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => TimerScreen()),
-    );
+    ).then((_) {
+      // Restore focus to the last clicked icon when returning
+      _restoreLastFocus();
+    });
   }
 
   void _navigateToCircuit() {
+    // Set focus index before navigation
+    _currentFocusIndex = 1;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => CircuitScreen()),
-    );
+    ).then((_) {
+      // Restore focus to the last clicked icon when returning
+      _restoreLastFocus();
+    });
   }
 
   @override
@@ -108,51 +182,76 @@ class _KncHomeState extends State<KncHome> {
           centerTitle: true,
         ),
       ),
-      body: Container(
-        child: Column(
-          children: [
-            Expanded(flex: 1, child: Container()),
+      body: RawKeyboardListener(
+        focusNode: FocusNode(skipTraversal: true),
+        autofocus: true,
+        onKey: _handleKeyEvent,
+        child: Container(
+          child: Column(
+            children: [
+              Expanded(flex: 1, child: Container()),
 
-            Expanded(
-              flex: 2,
-              child: Center(
-                child: Text(
-                  '${_currentTime.hour.toString().padLeft(2, '0')}:${_currentTime.minute.toString().padLeft(2, '0')}:${_currentTime.second.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                    fontSize: MediaQuery.of(context).size.height * 0.25,
-                    fontWeight: FontWeight.bold,
+              Expanded(
+                flex: 2,
+                child: Center(
+                  child: Text(
+                    '${_currentTime.hour.toString().padLeft(2, '0')}:${_currentTime.minute.toString().padLeft(2, '0')}:${_currentTime.second.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      fontSize: MediaQuery.of(context).size.height * 0.25,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ),
-            ),
 
-            Expanded(flex: 1, child: Container()),
+              Expanded(flex: 1, child: Container()),
 
-            Padding(
-              padding: EdgeInsets.only(bottom: 40),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: _navigateToTimer,
-                    child: Icon(
-                      Icons.timer,
-                      size: MediaQuery.of(context).size.height * 0.05,
+              Padding(
+                padding: EdgeInsets.only(bottom: 40),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap: _navigateToTimer,
+                      child: Focus(
+                        focusNode: _timerFocusNode,
+                        child: Container(
+                          padding: EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.timer,
+                            size: MediaQuery.of(context).size.height * 0.05,
+                            color: _timerFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 20),
-                  GestureDetector(
-                    onTap: _navigateToCircuit,
-                    child: Icon(
-                      Icons.loop,
-                      size: MediaQuery.of(context).size.height * 0.05,
+                    SizedBox(width: 20),
+                    GestureDetector(
+                      onTap: _navigateToCircuit,
+                      child: Focus(
+                        focusNode: _circuitFocusNode,
+                        child: Container(
+                          padding: EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.loop,
+                            size: MediaQuery.of(context).size.height * 0.05,
+                            color: _circuitFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
