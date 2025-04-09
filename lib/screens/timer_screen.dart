@@ -24,8 +24,10 @@ class TimerScreenState extends State<TimerScreen> {
   bool _showGrid = true;
   bool _isCountdown = false;
   bool _playedEndSound = false;
+  bool _isPaused = false;
   final AudioPlayer _player = AudioPlayer();
   final FocusNode _keyboardFocusNode = FocusNode();
+  final FocusNode _pauseButtonFocusNode = FocusNode();
   final Duration _countdownDuration = Duration(seconds: 3);
 
   @override
@@ -35,50 +37,54 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _onTick(Duration elapsed) {
-    if (_isRunning && _selectedDuration != null) {
+    if (_isRunning && _selectedDuration != null && !_isPaused) {
       final timeLeft = _isCountdown 
           ? _countdownDuration - _stopwatch.elapsed 
           : _selectedDuration! - _stopwatch.elapsed;
+      
+      // Ensure we don't go below zero
+      final sanitizedTimeLeft = timeLeft.isNegative ? Duration.zero : timeLeft;
           
-      if (timeLeft <= Duration.zero) {
+      if (sanitizedTimeLeft == Duration.zero) {
         if (_isCountdown) {
           // Countdown is complete, start the actual timer
+          print('Countdown complete - transitioning to actual timer');
           _startActualTimer();
-        } else {
-          // Timer is complete
-          setState(() {
-            _remaining = Duration.zero;
-          });
-          _stop();
-          if (!_playedEndSound) {
-            _playEndSound();
-            _playedEndSound = true;
-            // Only show grid when timer completes fully, not during countdown transition
-            Future.delayed(Duration(milliseconds: 500), () {
-              if (mounted) {
-                setState(() {
-                  _showGrid = true;
-                });
-              }
-            });
-          }
-        }
-      } else {
-        if (!_isCountdown && !_playedEndSound && timeLeft.inSeconds <= 1) {
-          _playEndSound();
-          _playedEndSound = true;
-          // Only show grid when timer completes fully
-          Future.delayed(Duration(milliseconds: 500), () {
-            if (mounted) {
+          
+          // Safety check to ensure grid is not shown after countdown
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _showGrid && _isRunning && !_isCountdown) {
+              print('Critical correction: Hiding grid that was incorrectly shown after countdown');
               setState(() {
-                _showGrid = true;
+                _showGrid = false;
               });
             }
           });
+        } else if (_isRunning) { // Only handle completion once
+          // Timer is complete - show 00:00
+          setState(() {
+            _remaining = Duration.zero;
+            _isRunning = false; // Stop the timer
+            _stopwatch.stop();
+          });
+          
+          if (!_playedEndSound) {
+            // Play the end sound and show grid only after sound completes
+            _playEndSound();
+            _playedEndSound = true;
+          }
         }
+      } else {
+        // Update the remaining time
         setState(() {
-          _remaining = timeLeft;
+          _remaining = sanitizedTimeLeft;
         });
+        
+        // If we're about to finish (last second), play the sound
+        if (!_isCountdown && !_playedEndSound && sanitizedTimeLeft.inSeconds <= 1 && sanitizedTimeLeft.inMilliseconds <= 50) {
+          _playEndSound();
+          _playedEndSound = true;
+        }
       }
     }
   }
@@ -97,17 +103,34 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _startActualTimer() {
+    print('Starting actual timer - ensuring grid is hidden');
     setState(() {
       _isCountdown = false;
       _isRunning = true;
       _remaining = _selectedDuration!;
-      _showGrid = false;
+      _showGrid = false; // Explicitly ensure grid remains hidden
       _playedEndSound = false;
+      _isPaused = false;
       _stopwatch..reset()..start();
     });
     
-    // Debug log
-    print('Starting actual timer: duration=${_selectedDuration!.inSeconds}s');
+    // Focus the pause button when the timer starts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_pauseButtonFocusNode.hasFocus) {
+        _pauseButtonFocusNode.requestFocus();
+      }
+    });
+    
+    // Double check that grid is hidden after the state update
+    // This is a safety measure in case another part of the code is setting _showGrid = true
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _showGrid && _isRunning) {
+        print('Post-frame correction: Hiding grid that was incorrectly shown');
+        setState(() {
+          _showGrid = false;
+        });
+      }
+    });
   }
 
   Future<void> _playSound(String soundFile) async {
@@ -144,6 +167,9 @@ class TimerScreenState extends State<TimerScreen> {
 
   // Handle ESC key and back button press
   void _handleBackPress() {
+    // Stop any playing sound
+    _player.stop();
+    
     if (_isRunning) {
       // If timer is running, stop it and show grid
       setState(() {
@@ -161,6 +187,8 @@ class TimerScreenState extends State<TimerScreen> {
       if (event.logicalKey == LogicalKeyboardKey.escape || 
           event.logicalKey == LogicalKeyboardKey.goBack) {
         _handleBackPress();
+      } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning && !_isCountdown) {
+        _togglePause();
       }
     }
   }
@@ -169,10 +197,54 @@ class TimerScreenState extends State<TimerScreen> {
   Future<void> _playEndSound() async {
     try {
       await _player.stop();
+      
+      // Remove any existing listeners to prevent duplicates
+      _player.onPlayerComplete.drain();
+      
+      // Only set up the listener for grid display for end sound, not start sound
+      _player.onPlayerComplete.listen((event) {
+        if (mounted) {
+          print('End sound completed - timer state: running=${_isRunning}, countdown=${_isCountdown}');
+          // Only show grid on timer completion, not during transitions
+          if (!_isCountdown && !_isRunning) {
+            print('Showing grid after end sound completed');
+            setState(() {
+              _showGrid = true; // Show grid after sound completes
+            });
+          }
+        }
+      });
+      
       await _player.play(AssetSource('sounds/end.mp3'));
     } catch (e) {
       print('Error playing end sound: $e');
+      // If sound fails, still show the grid but only if timer is complete
+      if (mounted && !_isCountdown && !_isRunning) {
+        setState(() {
+          _showGrid = true;
+        });
+      }
     }
+  }
+
+  void _togglePause() {
+    setState(() {
+      _isPaused = !_isPaused;
+      if (_isPaused) {
+        // Pause the stopwatch
+        _stopwatch.stop();
+      } else {
+        // Resume the stopwatch
+        _stopwatch.start();
+      }
+    });
+    
+    // Focus the pause button after toggling
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_pauseButtonFocusNode.hasFocus) {
+        _pauseButtonFocusNode.requestFocus();
+      }
+    });
   }
 
   String _format(Duration d) {
@@ -188,6 +260,7 @@ class TimerScreenState extends State<TimerScreen> {
     _stopwatch.stop();
     _player.dispose();
     _keyboardFocusNode.dispose();
+    _pauseButtonFocusNode.dispose();
     super.dispose();
   }
 
@@ -207,22 +280,6 @@ class TimerScreenState extends State<TimerScreen> {
         },
         child: Scaffold(
           backgroundColor: Colors.white,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            elevation: 0,
-            automaticallyImplyLeading: false, // Remove back button
-            title: Text(
-              'Timer',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w100,
-                fontFamily: 'Roboto Condensed',
-              ),
-            ),
-            centerTitle: true,
-            toolbarHeight: 80,
-          ),
           body: Center(
             child: _showGrid 
                 ? _buildTimerGrid() 
@@ -253,36 +310,50 @@ class TimerScreenState extends State<TimerScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25;
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (_isCountdown)
-            Text(
+    return Stack(
+      children: [
+        // Timer display always centered
+        Center(
+          child: Text(
+            _format(_remaining),
+            style: TextStyle(
+              fontSize: timerFontSize,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+              height: 1.0,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        
+        // Starting Soon text positioned above but not affecting center alignment of timer
+        if (_isCountdown)
+          Positioned(
+            top: screenHeight * 0.25,
+            left: 0,
+            right: 0,
+            child: Text(
               'Starting Soon',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 color: Colors.black,
               ),
+              textAlign: TextAlign.center,
             ),
-          SizedBox(height: _isCountdown ? 20 : 0),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return Text(
-                _format(_remaining),
-                style: TextStyle(
-                  fontSize: timerFontSize,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                  height: 1.0,
-                ),
-                textAlign: TextAlign.center,
-              );
-            },
           ),
-        ],
-      ),
+          
+        // Pause/Resume button at the bottom
+        if (!_isCountdown) // Don't show during countdown
+          Positioned(
+            bottom: screenHeight * 0.15,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: _buildPauseResumeButton(),
+            ),
+          ),
+      ],
     );
   }
 
@@ -313,6 +384,23 @@ class TimerScreenState extends State<TimerScreen> {
           child: Text(
             _format(duration),
             style: TextStyle(fontSize: fontSize, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPauseResumeButton() {
+    return GestureDetector(
+      onTap: _togglePause,
+      child: Focus(
+        focusNode: _pauseButtonFocusNode,
+        child: Container(
+          padding: EdgeInsets.all(16),
+          child: Icon(
+            _isPaused ? Icons.play_arrow : Icons.pause,
+            color: Colors.black,
+            size: 40,
           ),
         ),
       ),
