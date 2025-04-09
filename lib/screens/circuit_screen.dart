@@ -627,6 +627,28 @@ class CircuitScreenState extends State<CircuitScreen> {
       },
       child: Scaffold(
         backgroundColor: Colors.white,
+        appBar: PreferredSize(
+          preferredSize: Size.fromHeight(
+            MediaQuery.of(context).size.height * 0.2,
+          ),
+          child: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            automaticallyImplyLeading: false,
+            toolbarHeight: MediaQuery.of(context).size.height * 0.2,
+            title: Center(
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.2 * 0.8,
+                child: Image.asset(
+                  'assets/images/logo2.jpeg',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            centerTitle: true,
+          ),
+        ),
         body: RawKeyboardListener(
           focusNode: _keyboardFocusNode,
           autofocus: true,

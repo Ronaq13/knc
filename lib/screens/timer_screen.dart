@@ -411,6 +411,28 @@ class TimerScreenState extends State<TimerScreen> {
         },
         child: Scaffold(
           backgroundColor: Colors.white,
+          appBar: PreferredSize(
+            preferredSize: Size.fromHeight(
+              MediaQuery.of(context).size.height * 0.2,
+            ),
+            child: AppBar(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              elevation: 0,
+              automaticallyImplyLeading: false, // Remove the back button
+              toolbarHeight: MediaQuery.of(context).size.height * 0.2,
+              title: Center(
+                child: Container(
+                  height: MediaQuery.of(context).size.height * 0.2 * 0.8,
+                  child: Image.asset(
+                    'assets/images/logo2.jpeg',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              centerTitle: true,
+            ),
+          ),
           body: Center(
             child: _showGrid 
                 ? _buildTimerGrid() 
@@ -441,11 +463,27 @@ class TimerScreenState extends State<TimerScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final timerFontSize = screenHeight * 0.25;
 
-    return Stack(
-      children: [
-        // Timer display always centered
-        Center(
-          child: Text(
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Fixed height container for the title text to prevent layout shifts
+          Container(
+            height: 40, // Fixed height for title area
+            alignment: Alignment.center,
+            child: _isCountdown
+              ? Text(
+                  'Starting Soon',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                )
+              : Container(), // Empty container when not in countdown
+          ),
+          const SizedBox(height: 20),
+          Text(
             _format(_remaining),
             style: TextStyle(
               fontSize: timerFontSize,
@@ -455,36 +493,21 @@ class TimerScreenState extends State<TimerScreen> {
             ),
             textAlign: TextAlign.center,
           ),
-        ),
-        
-        // Starting Soon text positioned above but not affecting center alignment of timer
-        if (_isCountdown)
-          Positioned(
-            top: screenHeight * 0.25,
-            left: 0,
-            right: 0,
-            child: Text(
-              'Starting Soon',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-              textAlign: TextAlign.center,
+          // Constant spacing between timer and button area
+          SizedBox(height: screenHeight * 0.15),
+          // Fixed height area for button to prevent layout shifts
+          Container(
+            height: 72, // Space for the button
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (!_isCountdown)
+                  _buildPauseResumeButton(),
+              ],
             ),
           ),
-          
-        // Pause/Resume button at the bottom
-        if (!_isCountdown) // Don't show during countdown
-          Positioned(
-            bottom: screenHeight * 0.15,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: _buildPauseResumeButton(),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
