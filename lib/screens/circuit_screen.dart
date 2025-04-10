@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'dart:async';
 
 class CircuitScreen extends StatefulWidget {
   const CircuitScreen({Key? key}) : super(key: key);
@@ -11,123 +12,99 @@ class CircuitScreen extends StatefulWidget {
 }
 
 class CircuitScreenState extends State<CircuitScreen> {
-  Duration? interval;
-  Duration? breakDuration;
-  int? rounds;
-
-  int currentRound = 0;
-  bool isRunning = false;
-  bool isPaused = false;
-  bool isBreak = false;
-  bool isCountdown = true;
-  bool isCompleted = false;
-  Duration remaining = Duration.zero;
-  Duration totalPhaseDuration = Duration.zero;
-  Stopwatch stopwatch = Stopwatch();
+  // Timer state
+  Stopwatch _stopwatch = Stopwatch();
   late final Ticker _ticker;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  final Duration countdownTime = Duration(seconds: 3);
+  Duration? _currentInterval;
+  int currentRound = 1;
+  int completedIntervals = 0;
+  bool isCountdown = false;
+  bool isRunning = false;
+  bool isCompleted = false;
+  bool isPaused = false;
+  
+  // For sound effects
+  final AudioPlayer _player = AudioPlayer();
+  bool _playedEndSound = false;
+  bool _played10secWarning = false;
+  
+  // Configuration options
+  List<int> intervalOptions = [20, 30, 45, 60, 120, 180];
+  List<int> breakOptions = [10, 15, 20, 30, 45, 60];
+  List<int> roundOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  
+  // Selected values
+  int interval = 60;   // Default 60 seconds
+  int breakDuration = 15;  // Default 15 seconds
+  int rounds = 3;      // Default 3 rounds
+  
+  // Focus handling
   final FocusNode _keyboardFocusNode = FocusNode();
-
-  // Public getters for external access
-  bool get isCircuitRunning => isRunning;
-  bool get isCircuitCompleted => isCompleted;
-
-  // Time when pause was pressed
-  Duration? _pausedRemaining;
-
-  final List<Duration> intervalOptions = [
-    Duration(seconds: 15),
-    Duration(seconds: 30),
-    Duration(seconds: 45),
-    Duration(minutes: 1),
-    Duration(minutes: 1, seconds: 30),
-    Duration(minutes: 2),
-    Duration(minutes: 2, seconds: 30),
-    Duration(minutes: 3),
-    Duration(minutes: 3, seconds: 30),
-    Duration(minutes: 4),
-    Duration(minutes: 5),
-    Duration(minutes: 8),
-    Duration(minutes: 10),
-    Duration(minutes: 15),
-    Duration(minutes: 20),
-    Duration(minutes: 30),
-  ];
-
-  final List<Duration> breakOptions = [
-    Duration(seconds: 0),
-    Duration(seconds: 5),
-    Duration(seconds: 10),
-    Duration(seconds: 15),
-    Duration(seconds: 30),
-    Duration(seconds: 45),
-    Duration(minutes: 1),
-    Duration(minutes: 2),
-  ];
-
-  final List<int> roundOptions = [3, 5, 8, 10, 12, 15, 18, 20];
-  int? _lastBeepSecond;
-
-  // Focus nodes for option buttons
+  final FocusNode _pauseButtonFocusNode = FocusNode();
   late List<FocusNode> _intervalFocusNodes;
   late List<FocusNode> _breakFocusNodes;
   late List<FocusNode> _roundFocusNodes;
-  late FocusNode _pauseButtonFocusNode;
-  
-  // Track which type of option is currently focused (0=interval, 1=break, 2=rounds)
-  int _currentRowIndex = 0;
-  // Track which option in the current row is focused
+  int _currentRowIndex = 0; // 0 = interval, 1 = break, 2 = rounds
   int _currentColIndex = 0;
+  
+  // For handling TV remote key presses
+  String? _lastKeyPressed;
+  DateTime _lastKeyPressTime = DateTime.now();
+  
+  // For the clock in the AppBar
+  Timer? _clockTimer;
+  DateTime _currentTime = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _ticker = Ticker(_onTick)..start();
+    _ticker = Ticker(_onTick);
     
-    // Initialize focus nodes for all options
+    // Create focus nodes
     _intervalFocusNodes = List.generate(
-      intervalOptions.length,
-      (index) => FocusNode(),
+      intervalOptions.length, 
+      (_) => FocusNode()
     );
     
     _breakFocusNodes = List.generate(
-      breakOptions.length,
-      (index) => FocusNode(),
+      breakOptions.length, 
+      (_) => FocusNode()
     );
     
     _roundFocusNodes = List.generate(
-      roundOptions.length,
-      (index) => FocusNode(),
+      roundOptions.length, 
+      (_) => FocusNode()
     );
     
-    _pauseButtonFocusNode = FocusNode();
-    
-    // Set initial focus to the first interval option when the screen loads
+    // Set initial focus to first interval option
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !isRunning) {
-        _intervalFocusNodes[0].requestFocus();
-      }
+      _intervalFocusNodes[0].requestFocus();
+    });
+    
+    // Initialize the clock timer
+    _clockTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        _currentTime = DateTime.now();
+      });
     });
   }
 
   void _onTick(Duration elapsed) {
     if (!isRunning || isPaused) return;
 
-    final timeLeft = totalPhaseDuration - stopwatch.elapsed;
+    final timeLeft = _currentInterval! - _stopwatch.elapsed;
     if (timeLeft <= Duration.zero) {
-      _audioPlayer.stop();
-      stopwatch
+      _player.stop();
+      _stopwatch
         ..stop()
         ..reset();
-      _lastBeepSecond = null;
       if (isCountdown) {
         isCountdown = false;
         _startInterval();
-      } else if (isBreak) {
+      } else if (isPaused) {
         _startInterval();
       } else {
-        if (currentRound >= (rounds ?? 0)) {
+        if (currentRound >= rounds) {
           _completeWorkout();
         } else {
           // Increment round after an interval completes but before starting break
@@ -140,17 +117,17 @@ class CircuitScreenState extends State<CircuitScreen> {
     } else {
       _maybePlayBeep(timeLeft);
       setState(() {
-        remaining = timeLeft;
+        _currentInterval = timeLeft;
       });
     }
   }
 
   void _maybePlayBeep(Duration timeLeft) {
     // Play start sound when 3 seconds left in break phase
-    if (isBreak) {
+    if (isPaused) {
       int secondsLeft = timeLeft.inSeconds;
-      if (secondsLeft == 3 && _lastBeepSecond != secondsLeft) {
-        _lastBeepSecond = secondsLeft;
+      if (secondsLeft == 3 && !_played10secWarning) {
+        _played10secWarning = true;
         _playSound('start.mp3');
       }
       return;
@@ -161,11 +138,11 @@ class CircuitScreenState extends State<CircuitScreen> {
 
     // Only play end sound during interval (not during break)
     int secondsLeft = timeLeft.inSeconds;
-    if (secondsLeft == 1 && _lastBeepSecond != secondsLeft) {
-      _lastBeepSecond = secondsLeft;
+    if (secondsLeft == 1 && !_playedEndSound) {
+      _playedEndSound = true;
       _playSound('end.mp3');
     } else if (secondsLeft > 1 || secondsLeft <= 0) {
-      _lastBeepSecond = null;
+      _playedEndSound = false;
     }
   }
 
@@ -173,12 +150,10 @@ class CircuitScreenState extends State<CircuitScreen> {
     _playSound('start.mp3');
     
     setState(() {
-      isBreak = false;
+      isPaused = false;
       isCountdown = true;
-      totalPhaseDuration = countdownTime;
-      remaining = countdownTime;
-      _lastBeepSecond = null;
-      stopwatch
+      _currentInterval = Duration(seconds: interval);
+      _stopwatch
         ..reset()
         ..start();
     });
@@ -186,8 +161,8 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   Future<void> _playSound(String soundFile) async {
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.play(AssetSource('sounds/$soundFile'));
+      await _player.stop();
+      await _player.play(AssetSource('sounds/$soundFile'));
     } catch (e) {
       debugPrint('Error playing sound $soundFile: $e');
     }
@@ -195,22 +170,20 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   void _startInterval() {    
     setState(() {
-      isBreak = false;
+      isPaused = false;
       isCountdown = false;
-      totalPhaseDuration = interval!;
-      remaining = interval!;
-      _lastBeepSecond = null;
-      stopwatch
+      _currentInterval = Duration(seconds: interval);
+      _stopwatch
         ..reset()
         ..start();
     });
   }
 
   void _startBreak() {
-    _audioPlayer.stop();
+    _player.stop();
 
     // If break duration is 0, skip directly to next interval
-    if (breakDuration!.inSeconds == 0) {
+    if (breakDuration == 0) {
       // Play start sound immediately for 0-second breaks
       _playSound('start.mp3');
       _startInterval();
@@ -218,12 +191,10 @@ class CircuitScreenState extends State<CircuitScreen> {
     }
 
     setState(() {
-      isBreak = true;
+      isPaused = true;
       isCountdown = false;
-      totalPhaseDuration = breakDuration!;
-      remaining = breakDuration!;
-      _lastBeepSecond = null;
-      stopwatch
+      _currentInterval = Duration(seconds: breakDuration);
+      _stopwatch
         ..reset()
         ..start();
     });
@@ -235,7 +206,6 @@ class CircuitScreenState extends State<CircuitScreen> {
       isCompleted = false;
       currentRound = 1; // Start from round 1 instead of 0
       isPaused = false;
-      isBreak = false;
       isCountdown = true; // Start with countdown
     });
     
@@ -254,22 +224,12 @@ class CircuitScreenState extends State<CircuitScreen> {
     setState(() {
       isPaused = !isPaused;
       if (isPaused) {
-        // Store the remaining time when paused
-        _pausedRemaining = remaining;
-        stopwatch.stop();
+        _stopwatch.stop();
         // Pause audio playback
-        _audioPlayer.pause();
+        _player.pause();
       } else {
-        // Adjust the total phase duration to account for pause time
-        if (_pausedRemaining != null) {
-          totalPhaseDuration = _pausedRemaining!;
-          remaining = _pausedRemaining!;
-          stopwatch.reset();
-          stopwatch.start();
-          _pausedRemaining = null;
-          // Resume audio playback if it was paused
-          _audioPlayer.resume();
-        }
+        // Resume audio playback if it was paused
+        _player.resume();
       }
     });
     
@@ -282,12 +242,12 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _completeWorkout() {
-    _audioPlayer.stop();
+    _player.stop();
     setState(() {
       isCompleted = true;
       isRunning = false;
       isPaused = false;
-      stopwatch.stop();
+      _stopwatch.stop();
     });
     
     // Return to home screen after workout is complete
@@ -295,16 +255,15 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _resetState() {
-    _audioPlayer.stop();
+    _player.stop();
     setState(() {
       isRunning = false;
       isPaused = false;
       isCompleted = false;
       currentRound = 1; // Reset to 1
-      isBreak = false;
       isCountdown = false;
-      stopwatch.stop();
-      _pausedRemaining = null;
+      _stopwatch.stop();
+      _currentInterval = null;
       _currentRowIndex = 0;
       _currentColIndex = 0;
     });
@@ -391,9 +350,9 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   // Helper method to determine the last available row index based on selected values
   int _getLastAvailableRowIndex() {
-    if (interval == null) {
+    if (_currentInterval == null) {
       return 0; // Only Interval row is available
-    } else if (breakDuration == null) {
+    } else if (breakDuration == 0) {
       return 1; // Interval and Break rows are available
     } else {
       return 2; // All rows are available
@@ -455,9 +414,9 @@ class CircuitScreenState extends State<CircuitScreen> {
             child: Text(
               isCountdown 
                 ? 'Starting Soon' 
-                : isBreak 
+                : isPaused 
                   ? 'Break' 
-                  : 'Round $currentRound / ${rounds ?? 0}',
+                  : 'Round $currentRound / $rounds',
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -467,7 +426,7 @@ class CircuitScreenState extends State<CircuitScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            _format(remaining),
+            _format(_currentInterval!),
             style: TextStyle(
               fontSize: timerFontSize,
               fontWeight: FontWeight.bold,
@@ -523,14 +482,14 @@ class CircuitScreenState extends State<CircuitScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildSelection<Duration>('Interval', intervalOptions, interval, (val) {
+            _buildSelection<int>('Interval', intervalOptions, interval, (val) {
               setState(() => interval = val);
             }, 0),
-            if (interval != null)
-              _buildSelection<Duration>('Break', breakOptions, breakDuration, (val) {
+            if (interval != 0)
+              _buildSelection<int>('Break', breakOptions, breakDuration, (val) {
                 setState(() => breakDuration = val);
               }, 1),
-            if (interval != null && breakDuration != null)
+            if (interval != 0 && breakDuration != 0)
               _buildSelection<int>('Rounds', roundOptions, rounds, (val) {
                 setState(() {
                   rounds = val;
@@ -586,7 +545,7 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _handleBackPress() {
-    _audioPlayer.stop();
+    _player.stop();
     if (isRunning) {
       _resetState();
     } else if (!isRunning && !isCompleted) {
@@ -598,8 +557,8 @@ class CircuitScreenState extends State<CircuitScreen> {
   @override
   void dispose() {
     _ticker.dispose();
-    stopwatch.stop();
-    _audioPlayer.dispose();
+    _stopwatch.stop();
+    _player.dispose();
     _keyboardFocusNode.dispose();
     _pauseButtonFocusNode.dispose();
     
@@ -613,6 +572,9 @@ class CircuitScreenState extends State<CircuitScreen> {
     for (var node in _roundFocusNodes) {
       node.dispose();
     }
+    
+    // Dispose the clock timer
+    _clockTimer?.cancel();
     
     super.dispose();
   }
@@ -652,27 +614,91 @@ class CircuitScreenState extends State<CircuitScreen> {
           focusNode: _keyboardFocusNode,
           autofocus: true,
           onKey: (RawKeyEvent event) {
+            // Only process key down events to avoid duplicates
             if (event is RawKeyDownEvent) {
+              // Debug print to see what keys are being detected
+              print("Raw key event: ${event.logicalKey} - ${event.physicalKey}");
+              
+              // Get the current key being pressed
+              String currentKey = event.logicalKey.keyLabel;
+              final now = DateTime.now();
+              
+              // Check if this is the same key being pressed rapidly (less than 150ms apart)
+              if (_lastKeyPressed == currentKey && 
+                  now.difference(_lastKeyPressTime).inMilliseconds < 150) {
+                print("Skipping rapid repeat of key: $currentKey");
+                return;
+              }
+              
+              // Update tracking variables
+              _lastKeyPressed = currentKey;
+              _lastKeyPressTime = now;
+              
               // Handle ESC/Back button for all states
               if (event.logicalKey == LogicalKeyboardKey.escape || 
-                  event.logicalKey == LogicalKeyboardKey.goBack) {
+                  event.logicalKey == LogicalKeyboardKey.goBack ||
+                  event.physicalKey == PhysicalKeyboardKey.escape) {
                 _handleBackPress();
+                return;
               }
+              
               // For running circuit
-              else if (isRunning) {
-                if (event.logicalKey == LogicalKeyboardKey.space) {
+              if (isRunning) {
+                // Handle space/pause 
+                if (event.logicalKey == LogicalKeyboardKey.space ||
+                    event.physicalKey == PhysicalKeyboardKey.space) {
                   _togglePause();
-                } 
+                  return;
+                }
+                
                 // Handle Enter/Select/OK for pause button when focused
-                else if ((event.logicalKey == LogicalKeyboardKey.enter || 
-                         event.logicalKey == LogicalKeyboardKey.select) && 
-                         !isCountdown && _pauseButtonFocusNode.hasFocus) {
+                if ((event.logicalKey == LogicalKeyboardKey.enter || 
+                     event.logicalKey == LogicalKeyboardKey.select ||
+                     event.physicalKey == PhysicalKeyboardKey.enter ||
+                     event.physicalKey == PhysicalKeyboardKey.select) && 
+                    !isCountdown && _pauseButtonFocusNode.hasFocus) {
                   _togglePause();
+                  return;
                 }
               }
               // For config UI
               else if (!isRunning) {
-                _handleConfigKeyNavigation(event);
+                // Handle right arrow
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                    event.physicalKey == PhysicalKeyboardKey.arrowRight) {
+                  _handleMoveFocusRight();
+                  return;
+                }
+                
+                // Handle left arrow
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                    event.physicalKey == PhysicalKeyboardKey.arrowLeft) {
+                  _handleMoveFocusLeft();
+                  return;
+                }
+                
+                // Handle up arrow
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                    event.physicalKey == PhysicalKeyboardKey.arrowUp) {
+                  _handleMoveFocusUp();
+                  return;
+                }
+                
+                // Handle down arrow
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                    event.physicalKey == PhysicalKeyboardKey.arrowDown) {
+                  _handleMoveFocusDown();
+                  return;
+                }
+                
+                // Handle enter/select
+                if (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.select ||
+                    event.physicalKey == PhysicalKeyboardKey.enter ||
+                    event.physicalKey == PhysicalKeyboardKey.select) {
+                  _handleActivateFocusedOption();
+                  return;
+                }
               }
             }
           },
@@ -686,25 +712,8 @@ class CircuitScreenState extends State<CircuitScreen> {
     );
   }
   
-  // Handle keyboard navigation in the configuration UI
-  void _handleConfigKeyNavigation(RawKeyEvent event) {
-    // Handle navigation keys
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      _moveFocusRight();
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      _moveFocusLeft();
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      _moveFocusUp();
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      _moveFocusDown();
-    } else if (event.logicalKey == LogicalKeyboardKey.enter ||
-               event.logicalKey == LogicalKeyboardKey.select) {
-      _activateFocusedOption();
-    }
-  }
-
-  // Move focus right within the current row
-  void _moveFocusRight() {
+  // Handler methods for focus navigation with better control for TV remotes
+  void _handleMoveFocusRight() {
     int maxIndex = 0;
     if (_currentRowIndex == 0) {
       maxIndex = intervalOptions.length - 1;
@@ -717,46 +726,104 @@ class CircuitScreenState extends State<CircuitScreen> {
     if (_currentColIndex < maxIndex) {
       setState(() {
         _currentColIndex++;
-        _requestFocusForCurrentOption();
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _requestFocusForCurrentOption();
+          print("Moved focus RIGHT to column $_currentColIndex in row $_currentRowIndex");
+        }
       });
     }
   }
   
-  // Move focus left within the current row
-  void _moveFocusLeft() {
+  void _handleMoveFocusLeft() {
     if (_currentColIndex > 0) {
       setState(() {
         _currentColIndex--;
-        _requestFocusForCurrentOption();
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _requestFocusForCurrentOption();
+          print("Moved focus LEFT to column $_currentColIndex in row $_currentRowIndex");
+        }
       });
     }
   }
   
-  // Move focus up to the previous row if available
-  void _moveFocusUp() {
+  void _handleMoveFocusUp() {
     if (_currentRowIndex > 0) {
       setState(() {
         _currentRowIndex--;
         // Ensure column index is valid for the new row
         _currentColIndex = _currentColIndex.clamp(0, _getMaxColIndexForRow(_currentRowIndex));
-        _requestFocusForCurrentOption();
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _requestFocusForCurrentOption();
+          print("Moved focus UP to row $_currentRowIndex, column $_currentColIndex");
+        }
       });
     }
   }
   
-  // Move focus down to the next row if available
-  void _moveFocusDown() {
+  void _handleMoveFocusDown() {
     int lastAvailableRow = _getLastAvailableRowIndex();
     if (_currentRowIndex < lastAvailableRow) {
       setState(() {
         _currentRowIndex++;
         // Ensure column index is valid for the new row
         _currentColIndex = _currentColIndex.clamp(0, _getMaxColIndexForRow(_currentRowIndex));
-        _requestFocusForCurrentOption();
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _requestFocusForCurrentOption();
+          print("Moved focus DOWN to row $_currentRowIndex, column $_currentColIndex");
+        }
       });
     }
   }
   
+  void _handleActivateFocusedOption() {
+    if (_currentRowIndex == 0) {
+      // Set interval
+      setState(() => interval = intervalOptions[_currentColIndex]);
+      
+      // After selecting interval, focus on first break option
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _breakFocusNodes.isNotEmpty) {
+          _currentRowIndex = 1;
+          _currentColIndex = 0;
+          _breakFocusNodes[0].requestFocus();
+          print("Activated interval option, moved to break options");
+        }
+      });
+    } else if (_currentRowIndex == 1) {
+      // Set break duration
+      setState(() => breakDuration = breakOptions[_currentColIndex]);
+      
+      // After selecting break, focus on first round option
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _roundFocusNodes.isNotEmpty) {
+          _currentRowIndex = 2;
+          _currentColIndex = 0;
+          _roundFocusNodes[0].requestFocus();
+          print("Activated break option, moved to round options");
+        }
+      });
+    } else if (_currentRowIndex == 2) {
+      // Set rounds and start circuit
+      setState(() {
+        rounds = roundOptions[_currentColIndex];
+        _startCircuit();
+      });
+      print("Activated round option, starting circuit");
+    }
+  }
+
   // Helper to get the maximum column index for a given row
   int _getMaxColIndexForRow(int rowIndex) {
     if (rowIndex == 0) {
@@ -777,41 +844,6 @@ class CircuitScreenState extends State<CircuitScreen> {
       _breakFocusNodes[_currentColIndex].requestFocus();
     } else if (_currentRowIndex == 2 && _currentColIndex < roundOptions.length) {
       _roundFocusNodes[_currentColIndex].requestFocus();
-    }
-  }
-  
-  // Activate the currently focused option
-  void _activateFocusedOption() {
-    if (_currentRowIndex == 0) {
-      // Set interval
-      setState(() => interval = intervalOptions[_currentColIndex]);
-      
-      // After selecting interval, focus on first break option
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _breakFocusNodes.isNotEmpty) {
-          _currentRowIndex = 1;
-          _currentColIndex = 0;
-          _breakFocusNodes[0].requestFocus();
-        }
-      });
-    } else if (_currentRowIndex == 1) {
-      // Set break duration
-      setState(() => breakDuration = breakOptions[_currentColIndex]);
-      
-      // After selecting break, focus on first round option
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _roundFocusNodes.isNotEmpty) {
-          _currentRowIndex = 2;
-          _currentColIndex = 0;
-          _roundFocusNodes[0].requestFocus();
-        }
-      });
-    } else if (_currentRowIndex == 2) {
-      // Set rounds and start circuit
-      setState(() {
-        rounds = roundOptions[_currentColIndex];
-        _startCircuit();
-      });
     }
   }
 }
