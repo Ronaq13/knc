@@ -18,12 +18,12 @@ class TimerScreenState extends State<TimerScreen> {
     210, 240, 270, 300, 600, 1200, 1500, 1800
   ];
 
-  Duration? _selectedDuration;
+  Duration _selectedDuration = Duration.zero;
   Duration _remaining = Duration.zero;
   Stopwatch _stopwatch = Stopwatch();
   late final Ticker _ticker;
   bool _isRunning = false;
-  bool _showGrid = true;
+  bool _showInput = true;
   bool _isCountdown = false;
   bool _playedEndSound = false;
   bool _played10SecWarning = false;
@@ -31,8 +31,12 @@ class TimerScreenState extends State<TimerScreen> {
   final AudioPlayer _player = AudioPlayer();
   final FocusNode _keyboardFocusNode = FocusNode();
   final FocusNode _pauseButtonFocusNode = FocusNode();
-  late List<FocusNode> _timerButtonFocusNodes;
-  int _currentFocusIndex = 0;
+  final FocusNode _minutesFocusNode = FocusNode();
+  final FocusNode _secondsFocusNode = FocusNode();
+  final FocusNode _startButtonFocusNode = FocusNode();
+  bool _isMinutesFocused = true;
+  int _minutes = 0;
+  int _seconds = 0;
   final Duration _countdownDuration = Duration(seconds: 3);
   
   // For the clock in the AppBar
@@ -51,11 +55,6 @@ class TimerScreenState extends State<TimerScreen> {
     super.initState();
     _ticker = Ticker(_onTick)..start();
     
-    _timerButtonFocusNodes = List.generate(
-      timerOptions.length,
-      (index) => FocusNode(),
-    );
-    
     // Start clock timer
     _clockTimer = Timer.periodic(Duration(seconds: 1), (timer) {
       setState(() {
@@ -63,18 +62,19 @@ class TimerScreenState extends State<TimerScreen> {
       });
     });
     
+    // Set initial focus to minutes section
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _showGrid) {
-        _timerButtonFocusNodes[0].requestFocus();
+      if (mounted && _showInput) {
+        _minutesFocusNode.requestFocus();
       }
     });
   }
 
   void _onTick(Duration elapsed) {
-    if (_isRunning && _selectedDuration != null && !_isPaused) {
+    if (_isRunning && !_isPaused) {
       final timeLeft = _isCountdown 
           ? _countdownDuration - _stopwatch.elapsed 
-          : _selectedDuration! - _stopwatch.elapsed;
+          : _selectedDuration - _stopwatch.elapsed;
       
       // Ensure we don't go below zero
       final sanitizedTimeLeft = timeLeft.isNegative ? Duration.zero : timeLeft;
@@ -83,15 +83,6 @@ class TimerScreenState extends State<TimerScreen> {
         if (_isCountdown) {
           // Countdown is complete, start the actual timer
           _startActualTimer();
-          
-          // Safety check to ensure grid is not shown after countdown
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _showGrid && _isRunning && !_isCountdown) {
-              setState(() {
-                _showGrid = false;
-              });
-            }
-          });
         } else if (_isRunning) { // Only handle completion once
           // Timer is complete - show 00:00
           setState(() {
@@ -101,7 +92,7 @@ class TimerScreenState extends State<TimerScreen> {
           });
           
           if (!_playedEndSound) {
-            // Play the end sound and show grid only after sound completes
+            // Play the end sound and show input only after sound completes
             _playEndSound();
             _playedEndSound = true;
           }
@@ -129,14 +120,13 @@ class TimerScreenState extends State<TimerScreen> {
     }
   }
 
-  void _startCountdown(Duration timerDuration) {
+  void _startCountdown() {
     _playSound('start.mp3');
     setState(() {
-      _selectedDuration = timerDuration;
       _remaining = _countdownDuration;
       _isCountdown = true;
       _isRunning = true;
-      _showGrid = false;
+      _showInput = false;
       _playedEndSound = false;
       _played10SecWarning = false;
       _stopwatch..reset()..start();
@@ -147,8 +137,8 @@ class TimerScreenState extends State<TimerScreen> {
     setState(() {
       _isCountdown = false;
       _isRunning = true;
-      _remaining = _selectedDuration!;
-      _showGrid = false; // Explicitly ensure grid remains hidden
+      _remaining = _selectedDuration;
+      _showInput = false;
       _playedEndSound = false;
       _played10SecWarning = false;
       _isPaused = false;
@@ -161,16 +151,6 @@ class TimerScreenState extends State<TimerScreen> {
         _pauseButtonFocusNode.requestFocus();
       }
     });
-    
-    // Double check that grid is hidden after the state update
-    // This is a safety measure in case another part of the code is setting _showGrid = true
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _showGrid && _isRunning) {
-        setState(() {
-          _showGrid = false;
-        });
-      }
-    });
   }
 
   Future<void> _playSound(String soundFile) async {
@@ -181,24 +161,69 @@ class TimerScreenState extends State<TimerScreen> {
     }
   }
 
-  void _start(Duration duration) {
+  Future<void> _playEndSound() async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sounds/end.mp3'));
+      
+      // Show input UI after sound completes
+      _player.onPlayerComplete.listen((event) {
+        if (mounted && !_isCountdown && !_isRunning) {
+          setState(() {
+            _showInput = true;
+            _minutes = 0;
+            _seconds = 0;
+          });
+          
+          // Request focus on minutes section
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _showInput) {
+              _minutesFocusNode.requestFocus();
+            }
+          });
+        }
+      });
+    } catch (e) {
+      // If sound fails, still show input UI
+      if (mounted && !_isCountdown && !_isRunning) {
+        setState(() {
+          _showInput = true;
+          _minutes = 0;
+          _seconds = 0;
+        });
+        
+        // Request focus on minutes section
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _showInput) {
+            _minutesFocusNode.requestFocus();
+          }
+        });
+      }
+    }
+  }
+
+  void _start() {
+    if (_minutes == 0 && _seconds == 0) return;
+    
     // Stop any existing timer first
     if (_isRunning) {
       _stop();
     }
     
+    // Set the selected duration
+    _selectedDuration = Duration(minutes: _minutes, seconds: _seconds);
+    
     // Reset state completely before starting new countdown
     setState(() {
       _playedEndSound = false;
       _played10SecWarning = false;
-      _showGrid = false;
+      _showInput = false;
     });
     
-    _startCountdown(duration);
+    _startCountdown();
   }
 
   void _stop() {
-    print("_stop called");
     setState(() {
       _stopwatch.stop();
       _isRunning = false;
@@ -207,49 +232,28 @@ class TimerScreenState extends State<TimerScreen> {
     });
   }
 
-  void _handleKeyEvent(KeyEvent event) {
-    // Debug print to see what keys are being detected
-    print("Key event: ${event.logicalKey} - isCountdown: $_isCountdown, isRunning: $_isRunning");
-    
-    if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.escape || 
-          event.logicalKey == LogicalKeyboardKey.goBack) {
-        print("ESC detected - handling back press");
-        _handleBackPress();
-      } else if (event.logicalKey == LogicalKeyboardKey.space && _isRunning) {
-        // Allow pause even during countdown
-        _togglePause();
-      } else if (_showGrid) {
-        _handleGridKeyNavigation(event);
-      }
-    }
-  }
-
-  // Handle ESC key and back button press
   void _handleBackPress() {
     // Stop any playing sound
     _player.stop();
     
-    // Debug print to trace function execution
-    print("_handleBackPress called, isCountdown: $_isCountdown, isRunning: $_isRunning");
-    
-    if (_isRunning || _isCountdown) { // Handle both running and countdown states
-      print("Stopping timer and showing grid");
-      // If timer is running or in countdown, stop it and show grid
+    if (_isRunning || _isCountdown) {
+      // If timer is running or in countdown, stop it and show input
       setState(() {
         _stop();
-        _showGrid = true;
-        _currentFocusIndex = 0; // Reset focus index to first button
+        _showInput = true;
+        _minutes = 0;
+        _seconds = 0;
+        _isMinutesFocused = true;
       });
       
-      // Request focus on the first button after the UI updates
+      // Request focus on minutes section
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
-          _timerButtonFocusNodes[0].requestFocus();
+        if (mounted && _showInput) {
+          _minutesFocusNode.requestFocus();
         }
       });
     } else {
-      // If on grid view, go back to home screen
+      // If on input view, go back to home screen
       Navigator.of(context).pop();
     }
   }
@@ -288,236 +292,246 @@ class TimerScreenState extends State<TimerScreen> {
     _player.dispose();
     _keyboardFocusNode.dispose();
     _pauseButtonFocusNode.dispose();
-    _clockTimer?.cancel(); // Cancel the clock timer
-    for (var node in _timerButtonFocusNodes) {
-      node.dispose();
-    }
+    _minutesFocusNode.dispose();
+    _secondsFocusNode.dispose();
+    _startButtonFocusNode.dispose();
+    _clockTimer?.cancel();
     super.dispose();
   }
 
-  void _handleGridKeyNavigation(KeyEvent event) {
-    final int columns = 4; // Estimated number of columns in the grid
-    final int currentRow = _currentFocusIndex ~/ columns;
-    final int currentCol = _currentFocusIndex % columns;
-    
-    int newIndex = _currentFocusIndex;
-    
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      newIndex = _currentFocusIndex + 1;
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      newIndex = _currentFocusIndex - 1;
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      newIndex = _currentFocusIndex - columns;
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      newIndex = _currentFocusIndex + columns;
-    } else if (event.logicalKey == LogicalKeyboardKey.enter ||
-               event.logicalKey == LogicalKeyboardKey.select) {
-      // Start the timer with the currently focused option
-      _start(Duration(seconds: timerOptions[_currentFocusIndex]));
-      return;
-    } else {
-      return; // Not an arrow key or enter/select
-    }
-    
-    // Ensure the new index is within bounds
-    if (newIndex >= 0 && newIndex < timerOptions.length) {
-      setState(() {
-        _currentFocusIndex = newIndex;
-        _timerButtonFocusNodes[newIndex].requestFocus();
-      });
-    }
+  Widget _buildTimerInput() {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final timerFontSize = screenHeight * 0.25;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Fixed height container for consistency with timer display
+        Container(
+          height: 50,
+          alignment: Alignment.center,
+        ),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Minutes section
+            Focus(
+              focusNode: _minutesFocusNode,
+              onFocusChange: (hasFocus) {
+                if (hasFocus) {
+                  setState(() => _isMinutesFocused = true);
+                }
+              },
+              onKey: (node, event) {
+                if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  setState(() {
+                    _minutes = (_minutes + 1).clamp(0, 99);
+                  });
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  setState(() {
+                    _minutes = (_minutes - 1).clamp(0, 99);
+                  });
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _secondsFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                
+                return KeyEventResult.ignored;
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  _minutes.toString().padLeft(2, '0'),
+                  style: TextStyle(
+                    fontSize: timerFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: _minutesFocusNode.hasFocus ? Colors.blue : Colors.black,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            Text(
+              ':',
+              style: TextStyle(
+                fontSize: timerFontSize,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+                height: 1.0,
+              ),
+            ),
+            // Seconds section
+            Focus(
+              focusNode: _secondsFocusNode,
+              onFocusChange: (hasFocus) {
+                if (hasFocus) {
+                  setState(() => _isMinutesFocused = false);
+                }
+              },
+              onKey: (node, event) {
+                if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  setState(() {
+                    _seconds = (_seconds + 5).clamp(0, 55);
+                  });
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  setState(() {
+                    _seconds = (_seconds - 5).clamp(0, 55);
+                  });
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _minutesFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _startButtonFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                
+                return KeyEventResult.ignored;
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  _seconds.toString().padLeft(2, '0'),
+                  style: TextStyle(
+                    fontSize: timerFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: _secondsFocusNode.hasFocus ? Colors.blue : Colors.black,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: screenHeight * 0.05),
+        Container(
+          height: 50,
+          child: GestureDetector(
+            onTap: _start,
+            child: Focus(
+              focusNode: _startButtonFocusNode,
+              onKey: (node, event) {
+                if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                
+                if (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.select) {
+                  _start();
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _secondsFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                
+                return KeyEventResult.ignored;
+              },
+              child: Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.play_arrow,
+                  color: _startButtonFocusNode.hasFocus ? Colors.blue : Colors.black,
+                  size: 40,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
-  // Separate sound playing from showing grid
-  Future<void> _playEndSound() async {
-    try {
-      await _player.stop();
-      
-      // Remove any existing listeners to prevent duplicates
-      _player.onPlayerComplete.drain();
-      
-      // Only set up the listener for grid display for end sound, not start sound
-      _player.onPlayerComplete.listen((event) {
-        if (mounted) {
-          // Only show grid on timer completion, not during transitions
-          if (!_isCountdown && !_isRunning) {
-            setState(() {
-              _showGrid = true; // Show grid after sound completes
-              _currentFocusIndex = 0; // Reset to first button
-            });
-            
-            // Request focus on the first button after the UI updates
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
-                _timerButtonFocusNodes[0].requestFocus();
-              }
-            });
-          }
-        }
-      });
-      
-      await _player.play(AssetSource('sounds/end.mp3'));
-    } catch (e) {
-      // If sound fails, still show the grid but only if timer is complete
-      if (mounted && !_isCountdown && !_isRunning) {
-        setState(() {
-          _showGrid = true;
-          _currentFocusIndex = 0; // Reset to first button
-        });
-        
-        // Request focus on the first button after the UI updates
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _showGrid && _timerButtonFocusNodes.isNotEmpty) {
-            _timerButtonFocusNodes[0].requestFocus();
-          }
-        });
-      }
-    }
+  Widget _buildTimerDisplay() {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final timerFontSize = screenHeight * 0.25;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Fixed height container for "Starting Soon" text
+        Container(
+          height: 50,
+          alignment: Alignment.center,
+          child: _isCountdown
+            ? Text(
+                'Starting Soon',
+                style: const TextStyle(
+                  fontSize: 24,
+                ),
+                textAlign: TextAlign.center,
+              )
+            : Container(),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          _format(_remaining),
+          style: TextStyle(
+            fontSize: timerFontSize,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            height: 1.0,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: screenHeight * 0.05),
+        Container(
+          height: 50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!_isCountdown)
+                GestureDetector(
+                  onTap: _togglePause,
+                  child: Focus(
+                    focusNode: _pauseButtonFocusNode,
+                    child: Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        _isPaused ? Icons.play_arrow : Icons.pause,
+                        color: _pauseButtonFocusNode.hasFocus ? Colors.blue : Colors.black,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // We still need screenHeight for other calculations
-    final double screenHeight = MediaQuery.of(context).size.height;
-    
     return RawKeyboardListener(
       focusNode: _keyboardFocusNode,
       onKey: (RawKeyEvent event) {
-        // Debug print to see what keys are being detected
-        print("Raw key event: ${event.logicalKey} - ${event.physicalKey}");
-        
-        // Only process key down events to avoid duplicates
         if (event is RawKeyDownEvent) {
-          // Get the current key being pressed
-          String currentKey = event.logicalKey.keyLabel;
-          final now = DateTime.now();
-          
-          // Check if this is the same key being pressed rapidly (less than 150ms apart)
-          // This helps prevent Android TV remote from triggering multiple events
-          if (_lastKeyPressed == currentKey && 
-              now.difference(_lastKeyPressTime).inMilliseconds < 150) {
-            print("Skipping rapid repeat of key: $currentKey");
-            return;
-          }
-          
-          // Update tracking variables
-          _lastKeyPressed = currentKey;
-          _lastKeyPressTime = now;
-          
           // Handle escape/back button
           if (event.logicalKey == LogicalKeyboardKey.escape || 
-              event.logicalKey == LogicalKeyboardKey.goBack ||
-              event.physicalKey == PhysicalKeyboardKey.escape) {
-            print("ESC/Back detected - handling back press");
+              event.logicalKey == LogicalKeyboardKey.goBack) {
             _handleBackPress();
             return;
           }
           
           // Handle space/pause when timer is running
-          if ((event.logicalKey == LogicalKeyboardKey.space ||
-               event.physicalKey == PhysicalKeyboardKey.space) && 
-              _isRunning) {
+          if ((event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.select) && _isRunning) {
             _togglePause();
             return;
-          }
-          
-          // Handle enter/select on pause button
-          if ((event.logicalKey == LogicalKeyboardKey.enter || 
-               event.logicalKey == LogicalKeyboardKey.select ||
-               event.physicalKey == PhysicalKeyboardKey.enter ||
-               event.physicalKey == PhysicalKeyboardKey.select) && 
-              _isRunning && !_isCountdown && _pauseButtonFocusNode.hasFocus) {
-            // Activate pause button when it's focused and Enter/Select is pressed
-            _togglePause();
-            return;
-          }
-          
-          // Handle grid navigation
-          if (_showGrid) {
-            // Handle right arrow
-            if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                event.physicalKey == PhysicalKeyboardKey.arrowRight) {
-              int newIndex = _currentFocusIndex + 1;
-              if (newIndex < timerOptions.length) {
-                setState(() {
-                  _currentFocusIndex = newIndex;
-                });
-                
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _timerButtonFocusNodes[newIndex].requestFocus();
-                    print("Moved focus RIGHT to index $_currentFocusIndex");
-                  }
-                });
-              }
-              return;
-            }
-            
-            // Handle left arrow
-            if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                event.physicalKey == PhysicalKeyboardKey.arrowLeft) {
-              int newIndex = _currentFocusIndex - 1;
-              if (newIndex >= 0) {
-                setState(() {
-                  _currentFocusIndex = newIndex;
-                });
-                
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _timerButtonFocusNodes[newIndex].requestFocus();
-                    print("Moved focus LEFT to index $_currentFocusIndex");
-                  }
-                });
-              }
-              return;
-            }
-            
-            // Handle up arrow
-            if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                event.physicalKey == PhysicalKeyboardKey.arrowUp) {
-              int newIndex = _currentFocusIndex - 4;
-              if (newIndex >= 0) {
-                setState(() {
-                  _currentFocusIndex = newIndex;
-                });
-                
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _timerButtonFocusNodes[newIndex].requestFocus();
-                    print("Moved focus UP to index $_currentFocusIndex");
-                  }
-                });
-              }
-              return;
-            }
-            
-            // Handle down arrow
-            if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
-                event.physicalKey == PhysicalKeyboardKey.arrowDown) {
-              int newIndex = _currentFocusIndex + 4;
-              if (newIndex < timerOptions.length) {
-                setState(() {
-                  _currentFocusIndex = newIndex;
-                });
-                
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _timerButtonFocusNodes[newIndex].requestFocus();
-                    print("Moved focus DOWN to index $_currentFocusIndex");
-                  }
-                });
-              }
-              return;
-            }
-            
-            // Handle enter/select
-            if (event.logicalKey == LogicalKeyboardKey.enter ||
-                event.logicalKey == LogicalKeyboardKey.select ||
-                event.physicalKey == PhysicalKeyboardKey.enter ||
-                event.physicalKey == PhysicalKeyboardKey.select) {
-              _start(Duration(seconds: timerOptions[_currentFocusIndex]));
-              return;
-            }
           }
         }
       },
@@ -525,7 +539,7 @@ class TimerScreenState extends State<TimerScreen> {
       child: WillPopScope(
         onWillPop: () async {
           _handleBackPress();
-          return false; // Always handle back press manually
+          return false;
         },
         child: Scaffold(
           backgroundColor: Colors.white,
@@ -537,11 +551,8 @@ class TimerScreenState extends State<TimerScreen> {
               backgroundColor: Colors.white,
               foregroundColor: Colors.black,
               elevation: 0,
-              automaticallyImplyLeading: false, // Remove the back button
+              automaticallyImplyLeading: false,
               toolbarHeight: MediaQuery.of(context).size.height * 0.2,
-              leading: SizedBox(
-                width: 144, // Fixed width for balance
-              ),
               title: Container(
                 height: MediaQuery.of(context).size.height * 0.2 * 0.8,
                 child: Image.asset(
@@ -549,177 +560,44 @@ class TimerScreenState extends State<TimerScreen> {
                   fit: BoxFit.contain,
                 ),
               ),
-              actions: [], // Remove clock from AppBar
               centerTitle: true,
             ),
           ),
-          body: Column(
-            children: [
-              // Main content
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: _showInput 
+                      ? _buildTimerInput()
+                      : _buildTimerDisplay(),
+                ),
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.07,
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _showGrid 
-                          ? _buildTimerGrid() 
-                          : _buildTimerDisplay(),
+                      Text(
+                        '🥊 by Raounak Sharma',
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.height * 0.02,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      Text(
+                        '${_currentTime.hour > 12 ? _currentTime.hour - 12 : _currentTime.hour == 0 ? 12 : _currentTime.hour}:${_currentTime.minute.toString().padLeft(2, '0')} ${_currentTime.hour >= 12 ? 'PM' : 'AM'}',
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.height * 0.05,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-              
-              // Bottom bar with clock
-              Container(
-                height: MediaQuery.of(context).size.height * 0.07, // Increased height
-                width: double.infinity,
-                color: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.center, // Center vertically
-                  children: [
-                    Text(
-                      '${_currentTime.hour > 12 ? _currentTime.hour - 12 : _currentTime.hour == 0 ? 12 : _currentTime.hour}:${_currentTime.minute.toString().padLeft(2, '0')} ${_currentTime.hour >= 12 ? 'PM' : 'AM'}',
-                      style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.height * 0.05, // Reduced font size
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimerGrid() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: List.generate(
-            timerOptions.length,
-            (i) => _buildTimerButton(Duration(seconds: timerOptions[i]), i),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimerDisplay() {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final timerFontSize = screenHeight * 0.25;
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Fixed height container for the title text to prevent layout shifts
-          Container(
-            height: 50, // Fixed height for title area
-            alignment: Alignment.center,
-            child: _isCountdown
-              ? Text(
-                  'Starting Soon',
-                  style: const TextStyle(
-                    fontSize: 24,
-                  ),
-                  textAlign: TextAlign.center,
-                )
-              : Container(), // Empty container when not in countdown
-          ),
-          const SizedBox(height: 20),
-          Text(
-            _format(_remaining),
-            style: TextStyle(
-              fontSize: timerFontSize,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-              height: 1.0,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          // Spacing between timer and button area
-          SizedBox(height: screenHeight * 0.05),
-          // Fixed height area for button to prevent layout shifts
-          Container(
-            height: 50, // Space for the button
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (!_isCountdown)
-                  _buildPauseResumeButton(),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTimerButton(Duration duration, int index) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final buttonHeight = screenHeight * 0.10;
-    final buttonWidth = screenWidth * 0.10;
-    final fontSize = buttonHeight * 0.3;
-
-    final isFocused = _timerButtonFocusNodes[index].hasFocus;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _currentFocusIndex = index;
-        });
-        _start(duration);
-      },
-      child: Focus(
-        focusNode: _timerButtonFocusNodes[index],
-        onFocusChange: (hasFocus) {
-          if (hasFocus) {
-            setState(() {
-              _currentFocusIndex = index;
-            });
-          }
-        },
-        child: Container(
-          height: buttonHeight,
-          width: buttonWidth,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          decoration: BoxDecoration(
-            color: isFocused ? Colors.blue : Colors.grey[800],
-            borderRadius: BorderRadius.circular(52),
-            border: Border.all(
-              color: isFocused ? Colors.white : Colors.transparent,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              _format(duration),
-              style: TextStyle(fontSize: fontSize, color: Colors.white),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPauseResumeButton() {
-    return GestureDetector(
-      onTap: _togglePause,
-      child: Focus(
-        focusNode: _pauseButtonFocusNode,
-        child: Container(
-          padding: EdgeInsets.all(16),
-          child: Icon(
-            _isPaused ? Icons.play_arrow : Icons.pause,
-            color: _pauseButtonFocusNode.hasFocus ? Colors.blue : Colors.black,
-            size: MediaQuery.of(context).size.height * 0.05,
           ),
         ),
       ),

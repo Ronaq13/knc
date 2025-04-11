@@ -360,6 +360,27 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
+                
+                // Bottom bar with attribution
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.07,
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        '🥊 by Raounak Sharma',
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.height * 0.02,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
