@@ -89,10 +89,6 @@ class CircuitScreenState extends State<CircuitScreen> {
   // Track which option in the current row is focused
   int _currentColIndex = 0;
 
-  // Variables for key debounce handling
-  String? _lastKeyPressed;
-  DateTime _lastKeyPressTime = DateTime.now();
-
   // For custom input
   bool _showInput = true;
   bool _playedEndSound = false;
@@ -139,19 +135,8 @@ class CircuitScreenState extends State<CircuitScreen> {
     
     _pauseButtonFocusNode = FocusNode();
     
-    // Set initial focus to the first interval option when the screen loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !isRunning && _intervalFocusNodes.isNotEmpty) {
-        _intervalFocusNodes[0].requestFocus();
-      }
-    });
-
-    // Set initial focus to interval minutes section
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _showInput) {
-        _intervalMinutesFocusNode.requestFocus();
-      }
-    });
+    // Set initial focus directly
+    _intervalMinutesFocusNode.requestFocus();
   }
 
   void _onTick(Duration elapsed) {
@@ -262,11 +247,25 @@ class CircuitScreenState extends State<CircuitScreen> {
   void _startBreak() {
     _audioPlayer.stop();
 
-    // If break duration is 0, skip directly to next interval
+    // If break duration is 0, handle countdown or direct start
     if (breakDuration!.inSeconds == 0) {
-      // Play start sound immediately for 0-second breaks
-      _playSound('start.mp3');
-      _startInterval();
+      // For rounds after first, show countdown
+      if (currentRound > 1) {
+        setState(() {
+          isBreak = false;
+          isCountdown = true;
+          totalPhaseDuration = countdownTime;
+          remaining = countdownTime;
+          _lastBeepSecond = null;
+          stopwatch.reset();
+          stopwatch.start();
+        });
+        _playSound('start.mp3');
+      } else {
+        // For first round, start interval directly
+        _playSound('start.mp3');
+        _startInterval();
+      }
       return;
     }
 
@@ -277,9 +276,8 @@ class CircuitScreenState extends State<CircuitScreen> {
       remaining = breakDuration!;
       _lastBeepSecond = null;
       _played10SecWarning = false;
-      stopwatch
-        ..reset()
-        ..start();
+      stopwatch.reset();
+      stopwatch.start();
     });
   }
 
@@ -535,7 +533,14 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   Widget _buildTimerDisplay() {
     final screenHeight = MediaQuery.of(context).size.height;
-    final timerFontSize = screenHeight * 0.25; // 25% of height
+    final timerFontSize = screenHeight * 0.25;
+
+    // Ensure pause button has focus when timer is running
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && isRunning && !isCountdown && !_pauseButtonFocusNode.hasFocus) {
+        _pauseButtonFocusNode.requestFocus();
+      }
+    });
 
     return Center(
       child: Column(
@@ -573,7 +578,7 @@ class CircuitScreenState extends State<CircuitScreen> {
           SizedBox(height: screenHeight * 0.05),
           // Fixed height area for button to prevent layout shifts
           Container(
-            height: 72, // Space for the button
+            height: 72,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -582,14 +587,21 @@ class CircuitScreenState extends State<CircuitScreen> {
                   onTap: _togglePause,
                   child: Focus(
                     focusNode: _pauseButtonFocusNode,
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey == LogicalKeyboardKey.select ||
+                            event.logicalKey == LogicalKeyboardKey.space) {
+                          _togglePause();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
                     child: Container(
                       padding: EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.transparent,
-                        border: Border.all(
-                          color: Colors.transparent,
-                          width: 2,
-                        ),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
@@ -610,19 +622,18 @@ class CircuitScreenState extends State<CircuitScreen> {
 
   Widget _buildCircuitInput() {
     final screenHeight = MediaQuery.of(context).size.height;
-    // Reduce font sizes
-    final timerFontSize = screenHeight * 0.12; // Reduced from 0.15
-    final labelFontSize = screenHeight * 0.02; // Reduced from 0.025
-    final verticalSpacing = screenHeight * 0.02; // Reduced from 0.03
+    final timerFontSize = screenHeight * 0.12;
+    final labelFontSize = screenHeight * 0.02;
+    final verticalSpacing = screenHeight * 0.02;
 
     return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min, // Add this to make Column take minimum space
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Interval Input
           Column(
-            mainAxisSize: MainAxisSize.min, // Add this
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'Interval',
@@ -631,30 +642,29 @@ class CircuitScreenState extends State<CircuitScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: verticalSpacing * 0.3), // Reduced from 0.5
+              SizedBox(height: verticalSpacing * 0.3),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Focus(
                     focusNode: _intervalMinutesFocusNode,
-                    onKey: (node, event) {
-                      if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                      
-                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                        setState(() {
-                          _intervalMinutes = (_intervalMinutes + 1).clamp(0, 99);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        setState(() {
-                          _intervalMinutes = (_intervalMinutes - 1).clamp(0, 99);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _intervalSecondsFocusNode.requestFocus();
-                        return KeyEventResult.handled;
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          setState(() {
+                            _intervalMinutes = (_intervalMinutes + 1).clamp(0, 99);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          setState(() {
+                            _intervalMinutes = (_intervalMinutes - 1).clamp(0, 99);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _intervalSecondsFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                       }
-                      
                       return KeyEventResult.ignored;
                     },
                     child: Container(
@@ -681,27 +691,26 @@ class CircuitScreenState extends State<CircuitScreen> {
                   ),
                   Focus(
                     focusNode: _intervalSecondsFocusNode,
-                    onKey: (node, event) {
-                      if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                      
-                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                        setState(() {
-                          _intervalSeconds = (_intervalSeconds + 5).clamp(0, 55);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        setState(() {
-                          _intervalSeconds = (_intervalSeconds - 5).clamp(0, 55);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                        _intervalMinutesFocusNode.requestFocus();
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _breakMinutesFocusNode.requestFocus();
-                        return KeyEventResult.handled;
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          setState(() {
+                            _intervalSeconds = (_intervalSeconds + 5).clamp(0, 55);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          setState(() {
+                            _intervalSeconds = (_intervalSeconds - 5).clamp(0, 55);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _intervalMinutesFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _breakMinutesFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                       }
-                      
                       return KeyEventResult.ignored;
                     },
                     child: Container(
@@ -722,46 +731,45 @@ class CircuitScreenState extends State<CircuitScreen> {
             ],
           ),
 
-          SizedBox(height: verticalSpacing), // Reduced from 1.5
+          SizedBox(height: verticalSpacing),
 
           // Break Input
           Column(
-            mainAxisSize: MainAxisSize.min, // Add this
-      children: [
-        Text(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 'Break',
                 style: TextStyle(
                   fontSize: labelFontSize,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: verticalSpacing * 0.3), // Reduced from 0.5
+              SizedBox(height: verticalSpacing * 0.3),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Focus(
                     focusNode: _breakMinutesFocusNode,
-                    onKey: (node, event) {
-                      if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                      
-                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                        setState(() {
-                          _breakMinutes = (_breakMinutes + 1).clamp(0, 99);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        setState(() {
-                          _breakMinutes = (_breakMinutes - 1).clamp(0, 99);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _breakSecondsFocusNode.requestFocus();
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                        _intervalSecondsFocusNode.requestFocus();
-                        return KeyEventResult.handled;
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          setState(() {
+                            _breakMinutes = (_breakMinutes + 1).clamp(0, 99);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          setState(() {
+                            _breakMinutes = (_breakMinutes - 1).clamp(0, 99);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _breakSecondsFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _intervalSecondsFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                       }
-                      
                       return KeyEventResult.ignored;
                     },
                     child: Container(
@@ -788,27 +796,26 @@ class CircuitScreenState extends State<CircuitScreen> {
                   ),
                   Focus(
                     focusNode: _breakSecondsFocusNode,
-                    onKey: (node, event) {
-                      if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                      
-                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                        setState(() {
-                          _breakSeconds = (_breakSeconds + 5).clamp(0, 55);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        setState(() {
-                          _breakSeconds = (_breakSeconds - 5).clamp(0, 55);
-                        });
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                        _breakMinutesFocusNode.requestFocus();
-                        return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                        _roundsFocusNode.requestFocus();
-                        return KeyEventResult.handled;
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent) {
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          setState(() {
+                            _breakSeconds = (_breakSeconds + 5).clamp(0, 55);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          setState(() {
+                            _breakSeconds = (_breakSeconds - 5).clamp(0, 55);
+                          });
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          _breakMinutesFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          _roundsFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
                       }
-                      
                       return KeyEventResult.ignored;
                     },
                     child: Container(
@@ -829,43 +836,42 @@ class CircuitScreenState extends State<CircuitScreen> {
             ],
           ),
 
-          SizedBox(height: verticalSpacing), // Reduced from 1.5
+          SizedBox(height: verticalSpacing),
 
           // Rounds Input
           Column(
-            mainAxisSize: MainAxisSize.min, // Add this
+            mainAxisSize: MainAxisSize.min,
             children: [
-        Text(
+              Text(
                 'Rounds',
                 style: TextStyle(
                   fontSize: labelFontSize,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: verticalSpacing * 0.3), // Reduced from 0.5
+              SizedBox(height: verticalSpacing * 0.3),
               Focus(
                 focusNode: _roundsFocusNode,
-                onKey: (node, event) {
-                  if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                  
-                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    setState(() {
-                      _roundsCount = (_roundsCount + 1).clamp(0, 99);
-                    });
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                    setState(() {
-                      _roundsCount = (_roundsCount - 1).clamp(0, 99);
-                    });
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                    _breakSecondsFocusNode.requestFocus();
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                    _startButtonFocusNode.requestFocus();
-                    return KeyEventResult.handled;
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      setState(() {
+                        _roundsCount = (_roundsCount + 1).clamp(0, 99);
+                      });
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      setState(() {
+                        _roundsCount = (_roundsCount - 1).clamp(0, 99);
+                      });
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _breakSecondsFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                      _startButtonFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    }
                   }
-                  
                   return KeyEventResult.ignored;
                 },
                 child: Container(
@@ -884,27 +890,26 @@ class CircuitScreenState extends State<CircuitScreen> {
             ],
           ),
 
-          SizedBox(height: verticalSpacing * 1.5), // Reduced from 2
+          SizedBox(height: verticalSpacing * 1.5),
 
           // Start Button
           Container(
-            height: screenHeight * 0.06, // Reduced from 0.08
+            height: screenHeight * 0.06,
             child: GestureDetector(
               onTap: _startCircuit,
               child: Focus(
                 focusNode: _startButtonFocusNode,
-                onKey: (node, event) {
-                  if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
-                  
-                  if (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.select) {
-                    _startCircuit();
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                    _roundsFocusNode.requestFocus();
-                    return KeyEventResult.handled;
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.enter ||
+                        event.logicalKey == LogicalKeyboardKey.select) {
+                      _startCircuit();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _roundsFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    }
                   }
-                  
                   return KeyEventResult.ignored;
                 },
                 child: Container(
@@ -933,19 +938,10 @@ class CircuitScreenState extends State<CircuitScreen> {
       focusNode: _keyboardFocusNode,
       onKey: (RawKeyEvent event) {
         if (event is RawKeyDownEvent) {
-          // Handle escape/back button
+          // Only handle escape/back button at root level
           if (event.logicalKey == LogicalKeyboardKey.escape || 
               event.logicalKey == LogicalKeyboardKey.goBack) {
             _handleBackPress();
-            return;
-          }
-          
-          // Handle space/pause when timer is running
-          if ((event.logicalKey == LogicalKeyboardKey.enter || 
-               event.logicalKey == LogicalKeyboardKey.select) && 
-              isRunning && !isCountdown) {
-            _togglePause();
-            return;
           }
         }
       },
@@ -995,7 +991,7 @@ class CircuitScreenState extends State<CircuitScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
-                        '👊 icon by Raounak Sharma',
+                        '🛠️ by Raounak Sharma',
                         style: TextStyle(
                           fontSize: MediaQuery.of(context).size.height * 0.02,
                           color: Colors.grey[800],
