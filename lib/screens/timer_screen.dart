@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:async';
 import '../services/settings_service.dart';
 
@@ -580,13 +581,53 @@ class TimerScreenState extends State<TimerScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        '🥊 by Raounak Sharma',
-                        style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.height * 0.02,
-                          color: Colors.grey[800],
-                        ),
+                      // Left side with QR code and text
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(
+                                text: 'https://www.linkedin.com/in/raounak-sharma/'
+                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('LinkedIn URL copied to clipboard'),
+                                  duration: Duration(seconds: 2),
+                                )
+                              );
+                            },
+                            child: Container(
+                              height: MediaQuery.of(context).size.height * 0.05,
+                              width: MediaQuery.of(context).size.height * 0.05,
+                              margin: EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Colors.grey[400]!,
+                                  width: 1,
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: QrImageView(
+                                data: 'https://www.linkedin.com/in/raounak-sharma/',
+                                version: QrVersions.auto,
+                                size: MediaQuery.of(context).size.height * 0.045,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                padding: EdgeInsets.zero,
+                                gapless: true,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '🛠️ by Raounak Sharma',
+                            style: TextStyle(
+                              fontSize: MediaQuery.of(context).size.height * 0.02,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ],
                       ),
+                      // Right side with clock
                       Text(
                         '${_currentTime.hour > 12 ? _currentTime.hour - 12 : _currentTime.hour == 0 ? 12 : _currentTime.hour}:${_currentTime.minute.toString().padLeft(2, '0')} ${_currentTime.hour >= 12 ? 'PM' : 'AM'}',
                         style: TextStyle(

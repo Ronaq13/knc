@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'screens/timer_screen.dart';
 import 'screens/circuit_screen.dart';
 import 'services/settings_service.dart';
@@ -368,14 +369,60 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                   color: Colors.white,
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // Left side with QR code and text
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(
+                                text: 'https://www.linkedin.com/in/raounak-sharma/'
+                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('LinkedIn URL copied to clipboard'),
+                                  duration: Duration(seconds: 2),
+                                )
+                              );
+                            },
+                            child: Container(
+                              height: MediaQuery.of(context).size.height * 0.05,
+                              width: MediaQuery.of(context).size.height * 0.05,
+                              margin: EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Colors.grey[400]!,
+                                  width: 1,
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: QrImageView(
+                                data: 'https://www.linkedin.com/in/raounak-sharma/',
+                                version: QrVersions.auto,
+                                size: MediaQuery.of(context).size.height * 0.045,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                padding: EdgeInsets.zero,
+                                gapless: true,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '🛠️ by Raounak Sharma',
+                            style: TextStyle(
+                              fontSize: MediaQuery.of(context).size.height * 0.02,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Right side with clock
                       Text(
-                        '🛠️ by Raounak Sharma 🥊',
+                        '',
                         style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.height * 0.02,
-                          color: Colors.grey[800],
+                          fontSize: MediaQuery.of(context).size.height * 0.05,
                         ),
                       ),
                     ],
