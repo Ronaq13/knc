@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:async';
+import '../services/settings_service.dart';
 
 class CircuitScreen extends StatefulWidget {
   const CircuitScreen({Key? key}) : super(key: key);
@@ -29,6 +30,8 @@ class CircuitScreenState extends State<CircuitScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final Duration countdownTime = Duration(seconds: 3);
   final FocusNode _keyboardFocusNode = FocusNode();
+  final SettingsService _settingsService = SettingsService();
+  bool _played10SecWarning = false;
   
   // For clock in bottom nav
   Timer? _clockTimer;
@@ -138,6 +141,7 @@ class CircuitScreenState extends State<CircuitScreen> {
         ..stop()
         ..reset();
       _lastBeepSecond = null;
+      _played10SecWarning = false;
       if (isCountdown) {
         isCountdown = false;
         _startInterval();
@@ -175,6 +179,14 @@ class CircuitScreenState extends State<CircuitScreen> {
     
     // Don't play sounds during countdown
     if (isCountdown) return;
+
+    // Check for 10-second warning during interval
+    if (!isBreak && !_played10SecWarning && 
+        timeLeft.inSeconds <= 10 && timeLeft.inSeconds > 9 &&
+        _settingsService.is10SecWarningEnabled) {
+      _played10SecWarning = true;
+      _playSound('10secLeft.mp3');
+    }
 
     // Only play end sound during interval (not during break)
     int secondsLeft = timeLeft.inSeconds;
@@ -217,6 +229,7 @@ class CircuitScreenState extends State<CircuitScreen> {
       totalPhaseDuration = interval!;
       remaining = interval!;
       _lastBeepSecond = null;
+      _played10SecWarning = false;
       stopwatch
         ..reset()
         ..start();
@@ -240,6 +253,7 @@ class CircuitScreenState extends State<CircuitScreen> {
       totalPhaseDuration = breakDuration!;
       remaining = breakDuration!;
       _lastBeepSecond = null;
+      _played10SecWarning = false;
       stopwatch
         ..reset()
         ..start();
