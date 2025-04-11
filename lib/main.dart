@@ -372,7 +372,7 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
-                        '🥊 by Raounak Sharma',
+                        '🛠️ by Raounak Sharma 🥊',
                         style: TextStyle(
                           fontSize: MediaQuery.of(context).size.height * 0.02,
                           color: Colors.grey[800],
