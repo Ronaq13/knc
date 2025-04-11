@@ -6,12 +6,8 @@ import 'services/settings_service.dart';
 import 'dart:async';
 
 void main() async {
-  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize settings service
   await SettingsService().initialize();
-  
   runApp(KncApp());
 }
 
@@ -61,249 +57,194 @@ class KncHome extends StatefulWidget {
 class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
   Timer? _clockTimer;
   DateTime _currentTime = DateTime.now();
-  final FocusNode _timerFocusNode = FocusNode();
-  final FocusNode _circuitFocusNode = FocusNode();
-  final FocusNode _10secToggleFocusNode = FocusNode();
-  int _currentFocusIndex = 0; // 0 = timer, 1 = circuit, 2 = sound toggle
-  
-  // Settings service for global preferences
+
+  final FocusNode _timerFocusNode = FocusNode(debugLabel: 'Timer');
+  final FocusNode _circuitFocusNode = FocusNode(debugLabel: 'Circuit');
+  final FocusNode _10secToggleFocusNode = FocusNode(debugLabel: '10secToggle');
   final SettingsService _settingsService = SettingsService();
-  
-  // Add variable to track back button presses
   DateTime? _lastBackPressTime;
-  
-  // For handling TV remote key presses
-  String? _lastKeyPressed;
-  DateTime _lastKeyPressTime = DateTime.now();
+  DateTime _lastKeyTime = DateTime.now();
+
+  int _currentFocusIndex = 0;
+  List<FocusNode> get _focusNodes => [_timerFocusNode, _circuitFocusNode, _10secToggleFocusNode];
+
+  void _logEvent(String message) {
+    final now = DateTime.now();
+    final timeString = "${now.hour}:${now.minute}:${now.second}.${now.millisecond}";
+    print("[$timeString] $message");
+  }
+
+  void _handleLeftArrow() {
+    _logEvent("Current focus is on: ${_focusNodes[_currentFocusIndex].debugLabel} (index: $_currentFocusIndex)");
+    
+    // Do nothing if we're already at the leftmost icon (timer)
+    if (_currentFocusIndex == 0) {
+      _logEvent("Already at leftmost icon (Timer), no focus change needed");
+      return;
+    }
+    
+    int newIndex = _currentFocusIndex - 1;
+    _logEvent("Will change focus to: ${_focusNodes[newIndex].debugLabel} (index: $newIndex)");
+    
+    setState(() {
+      _currentFocusIndex = newIndex;
+      _focusNodes[_currentFocusIndex].requestFocus();
+      _logEvent("Focus changed to: ${_focusNodes[_currentFocusIndex].debugLabel} (index: $_currentFocusIndex)");
+    });
+  }
+
+  void _handleRightArrow() {
+    _logEvent("Current focus is on: ${_focusNodes[_currentFocusIndex].debugLabel} (index: $_currentFocusIndex)");
+    
+    // Do nothing if we're already at the rightmost icon (10sec)
+    if (_currentFocusIndex == _focusNodes.length - 1) {
+      _logEvent("Already at rightmost icon (10sec), no focus change needed");
+      return;
+    }
+    
+    int newIndex = _currentFocusIndex + 1;
+    _logEvent("Will change focus to: ${_focusNodes[newIndex].debugLabel} (index: $newIndex)");
+    
+    setState(() {
+      _currentFocusIndex = newIndex;
+      _focusNodes[_currentFocusIndex].requestFocus();
+      _logEvent("Focus changed to: ${_focusNodes[_currentFocusIndex].debugLabel} (index: $_currentFocusIndex)");
+    });
+  }
+
+  void _handleSelection() {
+    _logEvent("Selection triggered - Current focus is on: ${_focusNodes[_currentFocusIndex].debugLabel} (index: $_currentFocusIndex)");
+    
+    // Use the current focus index directly to determine action
+    switch (_currentFocusIndex) {
+      case 0:
+        _logEvent("Executing Timer action");
+        _navigateToTimer();
+        break;
+      case 1:
+        _logEvent("Executing Circuit action");
+        _navigateToCircuit();
+        break;
+      case 2:
+        _logEvent("Executing 10sec toggle action");
+        _toggleWarningSound();
+        break;
+    }
+  }
+
+  void _handleKeyEvent(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastKeyTime).inMilliseconds < 150) return;
+    _lastKeyTime = now;
+
+    _logEvent("Key pressed: ${event.logicalKey.keyLabel}");
+    _logEvent("Current focus index: $_currentFocusIndex (${_focusNodes[_currentFocusIndex].debugLabel})");
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _handleLeftArrow();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _handleRightArrow();
+    } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.space) {
+      _handleSelection();
+    }
+  }
+
+  void _navigateToTimer() {
+    _logEvent("Navigating to Timer screen");
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) {
+        _logEvent("Building Timer screen");
+        return TimerScreen();
+      }),
+    ).then((_) {
+      _logEvent("Returned from Timer screen");
+      _timerFocusNode.requestFocus();
+    });
+  }
+
+  void _navigateToCircuit() {
+    _logEvent("Navigating to Circuit screen");
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) {
+        _logEvent("Building Circuit screen");
+        return CircuitScreen();
+      }),
+    ).then((_) {
+      _logEvent("Returned from Circuit screen");
+      _circuitFocusNode.requestFocus();
+    });
+  }
+
+  void _toggleWarningSound() {
+    _logEvent("Toggling 10-second warning sound");
+    _logEvent("Current warning sound state: ${_settingsService.is10SecWarningEnabled}");
+    
+    setState(() {
+      _settingsService.toggle10SecWarning();
+    });
+    
+    _logEvent("New warning sound state: ${_settingsService.is10SecWarningEnabled}");
+  }
 
   @override
   void initState() {
     super.initState();
-    
-    _clockTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      setState(() {
-        _currentTime = DateTime.now();
-      });
+
+    _clockTimer = Timer.periodic(Duration(seconds: 1), (_) {
+      setState(() => _currentTime = DateTime.now());
     });
-    
-    // Set initial focus on the timer icon
+
+    // Set initial focus to Timer icon
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _timerFocusNode.requestFocus();
+      _logEvent("Initial focus set to Timer");
     });
-    
-    // Register for didChangeAppLifecycleState callback
+
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     _clockTimer?.cancel();
-    _timerFocusNode.dispose();
-    _circuitFocusNode.dispose();
-    _10secToggleFocusNode.dispose();
+    for (var node in _focusNodes) {
+      node.dispose();
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-  
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Restore focus to last used icon when dependencies change
-    _restoreLastFocus();
-  }
-  
-  // Toggle 10-second warning sound
-  void _toggleWarningSound() async {
-    await _settingsService.toggle10SecWarning();
-    print("10-second warning sound: ${_settingsService.is10SecWarningEnabled ? 'ON' : 'OFF'}");
-    setState(() {
-      _currentFocusIndex = 2; // Update focus index when clicked directly
-    });
-  }
-
-  // Handle keyboard navigation
-  void _handleKeyEvent(RawKeyEvent event) {
-    if (event is RawKeyDownEvent) {
-      print("Key pressed: ${event.logicalKey.keyLabel} - ${event.physicalKey.debugName}");
-      print("Current focus index before: $_currentFocusIndex");
-      
-      // Get the current key being pressed
-      String currentKey = event.logicalKey.keyLabel;
-      final now = DateTime.now();
-      
-      // Check if this is the same key being pressed rapidly (less than 150ms apart)
-      if (_lastKeyPressed == currentKey && 
-          now.difference(_lastKeyPressTime).inMilliseconds < 150) {
-        print("Skipping rapid repeat of key: $currentKey");
-        return;
-      }
-      
-      // Update tracking variables
-      _lastKeyPressed = currentKey;
-      _lastKeyPressTime = now;
-      
-      // Handle left navigation
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-          event.physicalKey == PhysicalKeyboardKey.arrowLeft) {
-        // Skip navigation if on timer icon (index 0)
-        if (_currentFocusIndex == 0) {
-          print("Left pressed on timer icon - ignoring");
-          return;
-        }
-        
-        setState(() {
-          // Left arrow navigation
-          switch (_currentFocusIndex) {
-            case 1: // Circuit
-              _currentFocusIndex = 0; // Go to Timer
-              break;
-            case 2: // 10sec
-              _currentFocusIndex = 1; // Go to Circuit
-              break;
-            default:
-              _currentFocusIndex = 0;
-          }
-          print("Left pressed, new index: $_currentFocusIndex");
-        });
-        
-        // Use post-frame callback to ensure focus happens after state update
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _updateFocusBasedOnIndex();
-          }
-        });
-        return;
-      } 
-      
-      // Handle right navigation
-      if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
-          event.physicalKey == PhysicalKeyboardKey.arrowRight) {
-        // Skip navigation if on 10sec icon (index 2)
-        if (_currentFocusIndex == 2) {
-          print("Right pressed on 10sec icon - ignoring");
-          return;
-        }
-        
-        setState(() {
-          // Right arrow navigation
-          switch (_currentFocusIndex) {
-            case 0: // Timer
-              _currentFocusIndex = 1; // Go to Circuit
-              break;
-            case 1: // Circuit
-              _currentFocusIndex = 2; // Go to 10sec
-              break;
-            default:
-              _currentFocusIndex = 0;
-          }
-          print("Right pressed, new index: $_currentFocusIndex");
-        });
-        
-        // Use post-frame callback to ensure focus happens after state update
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _updateFocusBasedOnIndex();
-          }
-        });
-        return;
-      } 
-      
-      // Handle selection
-      if (event.logicalKey == LogicalKeyboardKey.enter ||
-          event.logicalKey == LogicalKeyboardKey.select ||
-          event.logicalKey == LogicalKeyboardKey.space ||
-          event.physicalKey == PhysicalKeyboardKey.enter ||
-          event.physicalKey == PhysicalKeyboardKey.select) {
-        
-        print("Select/Enter pressed on index: $_currentFocusIndex");
-        if (_currentFocusIndex == 0) {
-          _navigateToTimer();
-        } else if (_currentFocusIndex == 1) {
-          _navigateToCircuit();
-        } else if (_currentFocusIndex == 2) {
-          _toggleWarningSound();
-        }
-        return;
-      }
-    }
-  }
-  
-  // Update focus based on current index
-  void _updateFocusBasedOnIndex() {
-    // Use a post-frame callback to ensure the focus update happens after the UI has been rebuilt
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        if (_currentFocusIndex == 0) {
-          _timerFocusNode.requestFocus();
-          print("Focus requested on Timer");
-        } else if (_currentFocusIndex == 1) {
-          _circuitFocusNode.requestFocus();
-          print("Focus requested on Circuit");
-        } else if (_currentFocusIndex == 2) {
-          _10secToggleFocusNode.requestFocus();
-          print("Focus requested on 10sec");
-        }
-      }
-    });
-  }
-
-  // Focus on icon when returning to this screen
-  void _restoreLastFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          // Restore focus to the last clicked icon
-          _updateFocusBasedOnIndex();
-        });
-      }
-    });
-  }
-
-  void _navigateToTimer() {
-    // Set focus index before navigation
-    _currentFocusIndex = 0;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => TimerScreen()),
-    ).then((_) {
-      // Restore focus to the last clicked icon when returning
-      _restoreLastFocus();
-    });
-  }
-
-  void _navigateToCircuit() {
-    // Set focus index before navigation
-    _currentFocusIndex = 1;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => CircuitScreen()),
-    ).then((_) {
-      // Restore focus to the last clicked icon when returning
-      _restoreLastFocus();
-    });
-  }
 
   @override
-  Widget build(BuildContext context) {  
-    // Get current state of 10-second warning
+  Widget build(BuildContext context) {
     final bool is10secWarningSound = _settingsService.is10SecWarningEnabled;
+    _logEvent("Building UI with warning sound state: $is10secWarningSound");
     
-    return WillPopScope(
-      onWillPop: () async {
-        // Handle double back press to exit
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        
         if (_lastBackPressTime == null || 
             DateTime.now().difference(_lastBackPressTime!) > Duration(seconds: 2)) {
-          // If first press or more than 2 seconds since last press
           _lastBackPressTime = DateTime.now();
-                    
-          return false; // Don't exit yet
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Press back again to exit'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
         }
-        
-        return true; // Exit the app on second press within 2 seconds
       },
       child: Scaffold(
         appBar: PreferredSize(
-          preferredSize: Size.fromHeight(
-            MediaQuery.of(context).size.height * 0.2,
-          ),
+          preferredSize: Size.fromHeight(MediaQuery.of(context).size.height * 0.2),
           child: AppBar(
             backgroundColor: Colors.white,
             foregroundColor: Colors.black,
@@ -321,11 +262,10 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
             centerTitle: true,
           ),
         ),
-        body: RawKeyboardListener(
-          focusNode: FocusNode(skipTraversal: true),
-          autofocus: true,
-          onKey: _handleKeyEvent,
-          child: Container(
+        body: Focus(
+          child: RawKeyboardListener(
+            focusNode: FocusNode(skipTraversal: true, debugLabel: 'MainListener'),
+            onKey: _handleKeyEvent,
             child: Column(
               children: [
                 Expanded(flex: 1, child: Container()),
@@ -351,17 +291,11 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      // Timer icon
                       GestureDetector(
                         onTap: _navigateToTimer,
                         child: Focus(
                           focusNode: _timerFocusNode,
-                          onFocusChange: (hasFocus) {
-                            if (hasFocus) {
-                              setState(() {
-                                _currentFocusIndex = 0;
-                              });
-                            }
-                          },
                           child: Container(
                             padding: EdgeInsets.all(10),
                             decoration: BoxDecoration(
@@ -370,23 +304,18 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                             child: Icon(
                               Icons.timer,
                               size: MediaQuery.of(context).size.height * 0.05,
-                              color: _timerFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                              color: _currentFocusIndex == 0 ? Colors.blue : Colors.grey[700],
                             ),
                           ),
                         ),
                       ),
                       SizedBox(width: 20),
+                      
+                      // Circuit icon
                       GestureDetector(
                         onTap: _navigateToCircuit,
                         child: Focus(
                           focusNode: _circuitFocusNode,
-                          onFocusChange: (hasFocus) {
-                            if (hasFocus) {
-                              setState(() {
-                                _currentFocusIndex = 1;
-                              });
-                            }
-                          },
                           child: Container(
                             padding: EdgeInsets.all(10),
                             decoration: BoxDecoration(
@@ -395,27 +324,25 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                             child: Icon(
                               Icons.loop,
                               size: MediaQuery.of(context).size.height * 0.05,
-                              color: _circuitFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                              color: _currentFocusIndex == 1 ? Colors.blue : Colors.grey[700],
                             ),
                           ),
                         ),
                       ),
                       SizedBox(width: 20),
+                      
+                      // 10-second warning toggle
                       GestureDetector(
-                        onTap: _toggleWarningSound,
+                        onTap: () {
+                          _logEvent("10sec toggle tapped via GestureDetector");
+                          _toggleWarningSound();
+                        },
                         child: Focus(
                           focusNode: _10secToggleFocusNode,
-                          onFocusChange: (hasFocus) {
-                            if (hasFocus) {
-                              setState(() {
-                                _currentFocusIndex = 2;
-                              });
-                            }
-                          },
                           child: Container(
                             padding: EdgeInsets.all(0),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(0),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: SizedBox(
                               height: MediaQuery.of(context).size.height * 0.08,
@@ -423,7 +350,7 @@ class _KncHomeState extends State<KncHome> with WidgetsBindingObserver {
                                 is10secWarningSound 
                                   ? 'assets/images/10sec-on.png'
                                   : 'assets/images/10sec-off.png',
-                                color: _10secToggleFocusNode.hasFocus ? Colors.blue : Colors.grey[700],
+                                color: _currentFocusIndex == 2 ? Colors.blue : Colors.grey[700],
                                 colorBlendMode: BlendMode.srcIn,
                               ),
                             ),
