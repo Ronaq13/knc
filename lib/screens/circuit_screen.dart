@@ -1067,12 +1067,10 @@ class CircuitScreenState extends State<CircuitScreen> {
                               ),
                             ),
                           ),
-                          Text(
-                            '🛠️ by Raounak Sharma',
-                            style: TextStyle(
-                              fontSize: MediaQuery.of(context).size.height * 0.02,
-                              color: Colors.grey[800],
-                            ),
+                          Image.asset(
+                            'assets/images/raounak.png',
+                            height: MediaQuery.of(context).size.height * 0.05,
+                            fit: BoxFit.contain,
                           ),
                         ],
                       ),

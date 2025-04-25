@@ -69,6 +69,7 @@ flutter:
     - assets/images/logo2.jpeg
     - assets/images/10sec-on.png
     - assets/images/10sec-off.png
+    - assets/images/raounak.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
