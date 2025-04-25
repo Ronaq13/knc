@@ -175,17 +175,7 @@ class CircuitScreenState extends State<CircuitScreen> {
     }
   }
 
-  void _maybePlayBeep(Duration timeLeft) {
-    // Play start sound when 3 seconds left in break phase
-    if (isBreak) {
-      int secondsLeft = timeLeft.inSeconds;
-      if (secondsLeft == 3 && _lastBeepSecond != secondsLeft) {
-        _lastBeepSecond = secondsLeft;
-        _playSound('start.mp3');
-      }
-      return;
-    }
-    
+  void _maybePlayBeep(Duration timeLeft) {    
     // Don't play sounds during countdown
     if (isCountdown) return;
 
@@ -198,18 +188,19 @@ class CircuitScreenState extends State<CircuitScreen> {
     }
 
     // Only play end sound during interval (not during break)
-    int secondsLeft = timeLeft.inSeconds;
-    if (secondsLeft == 1 && _lastBeepSecond != secondsLeft) {
-      _lastBeepSecond = secondsLeft;
-      _playSound('end.mp3');
-    } else if (secondsLeft > 1 || secondsLeft <= 0) {
-      _lastBeepSecond = null;
+    // Also ensure we're not in a break
+    if (!isBreak) {
+      int secondsLeft = timeLeft.inSeconds;
+      if (secondsLeft == 1 && _lastBeepSecond != secondsLeft) {
+        _lastBeepSecond = secondsLeft;
+        _playSound('end.mp3');
+      } else if (secondsLeft > 1 || secondsLeft <= 0) {
+        _lastBeepSecond = null;
+      }
     }
   }
 
   void _startCountdown() {
-    _playSound('start.mp3');
-    
     setState(() {
       isBreak = false;
       isCountdown = true;
@@ -232,6 +223,8 @@ class CircuitScreenState extends State<CircuitScreen> {
   }
 
   void _startInterval() {
+    _playSound('start.mp3');
+
     setState(() {
       isBreak = false;
       isCountdown = false;
@@ -261,10 +254,8 @@ class CircuitScreenState extends State<CircuitScreen> {
           stopwatch.reset();
           stopwatch.start();
         });
-        _playSound('start.mp3');
       } else {
         // For first round, start interval directly
-        _playSound('start.mp3');
         _startInterval();
       }
       return;
@@ -317,8 +308,6 @@ class CircuitScreenState extends State<CircuitScreen> {
       stopwatch.reset();
       stopwatch.start();
     });
-
-    _playSound('start.mp3');
   }
 
   void _togglePause() {
@@ -402,11 +391,11 @@ class CircuitScreenState extends State<CircuitScreen> {
     int rowIndex,
     int colIndex,
   ) {
-          final screenHeight = MediaQuery.of(context).size.height;
-          final screenWidth = MediaQuery.of(context).size.width;
-          final buttonHeight = screenHeight * 0.10;
-          final buttonWidth = screenWidth * 0.10; // Adjust width as needed
-          final fontSize = buttonHeight * 0.3; // 30% of height
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final buttonHeight = screenHeight * 0.10;
+    final buttonWidth = screenWidth * 0.10; // Adjust width as needed
+    final fontSize = buttonHeight * 0.3; // 30% of height
 
     // Determine if this button should be focused
     FocusNode? focusNode;
@@ -449,8 +438,8 @@ class CircuitScreenState extends State<CircuitScreen> {
       }
     }
 
-          return GestureDetector(
-            onTap: () => onTap(value),
+    return GestureDetector(
+      onTap: () => onTap(value),
       child: Focus(
         focusNode: focusNode,
         onFocusChange: (hasFocus) {
@@ -649,16 +638,24 @@ class CircuitScreenState extends State<CircuitScreen> {
                 children: [
                   Focus(
                     focusNode: _intervalMinutesFocusNode,
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus) {
+                        setState(() {
+                          // This will trigger a rebuild only this UI when focus changes.
+                          // This is required to ensure that the focus node is updated instantly.
+                        });
+                      }
+                    },
                     onKeyEvent: (node, event) {
                       if (event is KeyDownEvent) {
                         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           setState(() {
-                            _intervalMinutes = (_intervalMinutes + 1).clamp(0, 99);
+                            _intervalMinutes = (_intervalMinutes - 1).clamp(0, 99);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           setState(() {
-                            _intervalMinutes = (_intervalMinutes - 1).clamp(0, 99);
+                            _intervalMinutes = (_intervalMinutes + 1).clamp(0, 99);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -692,16 +689,24 @@ class CircuitScreenState extends State<CircuitScreen> {
                   ),
                   Focus(
                     focusNode: _intervalSecondsFocusNode,
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus) {
+                        setState(() {
+                          // This will trigger a rebuild only this UI when focus changes.
+                          // This is required to ensure that the focus node is updated instantly.
+                        });
+                      }
+                    },
                     onKeyEvent: (node, event) {
                       if (event is KeyDownEvent) {
                         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           setState(() {
-                            _intervalSeconds = (_intervalSeconds + 5).clamp(0, 55);
+                            _intervalSeconds = (_intervalSeconds - 5).clamp(0, 55);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           setState(() {
-                            _intervalSeconds = (_intervalSeconds - 5).clamp(0, 55);
+                            _intervalSeconds = (_intervalSeconds + 5).clamp(0, 55);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -751,16 +756,24 @@ class CircuitScreenState extends State<CircuitScreen> {
                 children: [
                   Focus(
                     focusNode: _breakMinutesFocusNode,
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus) {
+                        setState(() {
+                          // This will trigger a rebuild only this UI when focus changes.
+                          // This is required to ensure that the focus node is updated instantly.
+                        });
+                      }
+                    },
                     onKeyEvent: (node, event) {
                       if (event is KeyDownEvent) {
                         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           setState(() {
-                            _breakMinutes = (_breakMinutes + 1).clamp(0, 99);
+                            _breakMinutes = (_breakMinutes - 1).clamp(0, 99);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           setState(() {
-                            _breakMinutes = (_breakMinutes - 1).clamp(0, 99);
+                            _breakMinutes = (_breakMinutes + 1).clamp(0, 99);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -797,16 +810,24 @@ class CircuitScreenState extends State<CircuitScreen> {
                   ),
                   Focus(
                     focusNode: _breakSecondsFocusNode,
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus) {
+                        setState(() {
+                          // This will trigger a rebuild only this UI when focus changes.
+                          // This is required to ensure that the focus node is updated instantly.
+                        });
+                      }
+                    },
                     onKeyEvent: (node, event) {
                       if (event is KeyDownEvent) {
                         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           setState(() {
-                            _breakSeconds = (_breakSeconds + 5).clamp(0, 55);
+                            _breakSeconds = (_breakSeconds - 5).clamp(0, 55);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                           setState(() {
-                            _breakSeconds = (_breakSeconds - 5).clamp(0, 55);
+                            _breakSeconds = (_breakSeconds + 5).clamp(0, 55);
                           });
                           return KeyEventResult.handled;
                         } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -853,16 +874,24 @@ class CircuitScreenState extends State<CircuitScreen> {
               SizedBox(height: verticalSpacing * 0.3),
               Focus(
                 focusNode: _roundsFocusNode,
+                onFocusChange: (hasFocus) {
+                  if (hasFocus) {
+                    setState(() {
+                      // This will trigger a rebuild only this UI when focus changes.
+                      // This is required to ensure that the focus node is updated instantly.
+                    });
+                  }
+                },
                 onKeyEvent: (node, event) {
                   if (event is KeyDownEvent) {
                     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                       setState(() {
-                        _roundsCount = (_roundsCount + 1).clamp(0, 99);
+                        _roundsCount = (_roundsCount - 1).clamp(0, 99);
                       });
                       return KeyEventResult.handled;
                     } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                       setState(() {
-                        _roundsCount = (_roundsCount - 1).clamp(0, 99);
+                        _roundsCount = (_roundsCount + 1).clamp(0, 99);
                       });
                       return KeyEventResult.handled;
                     } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -900,6 +929,14 @@ class CircuitScreenState extends State<CircuitScreen> {
               onTap: _startCircuit,
               child: Focus(
                 focusNode: _startButtonFocusNode,
+                onFocusChange: (hasFocus) {
+                  if (hasFocus) {
+                    setState(() {
+                      // This will trigger a rebuild only this UI when focus changes.
+                      // This is required to ensure that the focus node is updated instantly.
+                    });
+                  }
+                },
                 onKeyEvent: (node, event) {
                   if (event is KeyDownEvent) {
                     if (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -908,6 +945,8 @@ class CircuitScreenState extends State<CircuitScreen> {
                       return KeyEventResult.handled;
                     } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                       _roundsFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                       return KeyEventResult.handled;
                     }
                   }
