@@ -122,7 +122,6 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _startCountdown() {
-    _playSound('start.mp3');
     setState(() {
       _remaining = _countdownDuration;
       _isCountdown = true;
@@ -135,6 +134,8 @@ class TimerScreenState extends State<TimerScreen> {
   }
 
   void _startActualTimer() {
+    _playSound('start.mp3');
+    
     setState(() {
       _isCountdown = false;
       _isRunning = true;
@@ -167,22 +168,25 @@ class TimerScreenState extends State<TimerScreen> {
       await _player.stop();
       await _player.play(AssetSource('sounds/end.mp3'));
       
-      // Show input UI after sound completes
       _player.onPlayerComplete.listen((event) {
-        if (mounted && !_isCountdown && !_isRunning) {
-          setState(() {
-            _showInput = true;
-            _minutes = 0;
-            _seconds = 0;
-          });
+      // Show input UI after sound completes
+      //   if (mounted && !_isCountdown && !_isRunning) {
+      //     setState(() {
+      //       _showInput = true;
+      //       _minutes = 0;
+      //       _seconds = 0;
+      //     });
           
-          // Request focus on minutes section
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _showInput) {
-              _minutesFocusNode.requestFocus();
-            }
-          });
-        }
+      //     // Request focus on minutes section
+      //     WidgetsBinding.instance.addPostFrameCallback((_) {
+      //       if (mounted && _showInput) {
+      //         _minutesFocusNode.requestFocus();
+      //       }
+      //     });
+      //   }
+
+      // Navigate back to home screen after sound completes
+        Navigator.of(context).pop();
       });
     } catch (e) {
       // If sound fails, still show input UI
@@ -329,12 +333,12 @@ class TimerScreenState extends State<TimerScreen> {
                 
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                   setState(() {
-                    _minutes = (_minutes + 1).clamp(0, 99);
+                    _minutes = (_minutes - 1).clamp(0, 99);
                   });
                   return KeyEventResult.handled;
                 } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                   setState(() {
-                    _minutes = (_minutes - 1).clamp(0, 99);
+                    _minutes = (_minutes + 1).clamp(0, 99);
                   });
                   return KeyEventResult.handled;
                 } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -379,12 +383,12 @@ class TimerScreenState extends State<TimerScreen> {
                 
                 if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                   setState(() {
-                    _seconds = (_seconds + 5).clamp(0, 55);
+                    _seconds = (_seconds - 5).clamp(0, 55);
                   });
                   return KeyEventResult.handled;
                 } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
                   setState(() {
-                    _seconds = (_seconds - 5).clamp(0, 55);
+                    _seconds = (_seconds + 5).clamp(0, 55);
                   });
                   return KeyEventResult.handled;
                 } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -419,6 +423,14 @@ class TimerScreenState extends State<TimerScreen> {
             onTap: _start,
             child: Focus(
               focusNode: _startButtonFocusNode,
+              onFocusChange: (hasFocus) {
+                if (hasFocus) {
+                  setState(() {
+                    // This will trigger a rebuild when focus changes.
+                    // This is required to ensure that the focus node is updated instantly.
+                  });
+                }
+              },
               onKey: (node, event) {
                 if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
                 
@@ -428,6 +440,8 @@ class TimerScreenState extends State<TimerScreen> {
                   return KeyEventResult.handled;
                 } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                   _secondsFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                   return KeyEventResult.handled;
                 }
                 
